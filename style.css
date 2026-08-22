@@ -15,6 +15,7 @@ body {
   color: #e3e5e8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   height: 100vh;
+  height: 100dvh; /* Garante altura exata no mobile sem ser cortado pela barra de navegação */
   width: 100vw;
   display: flex;
   flex-direction: column;
@@ -30,8 +31,8 @@ body.low-gpu-mode * {
 
 /* Header Flutuante */
 header#main-header {
-  height: 52px;
-  padding: 0 20px;
+  min-height: 52px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -40,45 +41,55 @@ header#main-header {
   left: 0;
   right: 0;
   z-index: 900;
-  background: linear-gradient(180deg, rgba(13,14,18,0.85) 0%, rgba(13,14,18,0) 100%);
+  background: linear-gradient(180deg, rgba(13,14,18,0.92) 0%, rgba(13,14,18,0) 100%);
   transition: opacity 0.35s ease, transform 0.35s ease;
   pointer-events: auto;
+  gap: 8px;
 }
 
-.header-left, .header-right {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .badge {
-  background: rgba(43, 45, 53, 0.8);
+  background: rgba(43, 45, 53, 0.85);
   backdrop-filter: blur(8px);
   color: #ffa500;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 500;
   border: 1px solid rgba(255,255,255,0.05);
+  white-space: nowrap;
 }
 
 .badge.connected {
   color: #3ba55d;
-  background: rgba(30, 51, 37, 0.8);
+  background: rgba(30, 51, 37, 0.85);
 }
 
 .love-counter-badge {
   position: relative;
-  background: rgba(233, 30, 99, 0.2);
+  background: rgba(233, 30, 99, 0.25);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(233, 30, 99, 0.4);
   color: #ff7597;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: bold;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .love-tooltip {
@@ -102,19 +113,20 @@ header#main-header {
 .love-tooltip hr { border: none; border-top: 1px solid #2b2d31; margin: 8px 0; }
 
 .btn-icon {
-  background: rgba(43, 45, 53, 0.7);
+  background: rgba(43, 45, 53, 0.85);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,0.08);
   color: #fff;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .btn-icon:hover { background: #5865f2; transform: scale(1.05); }
@@ -150,16 +162,16 @@ header#main-header {
 /* Câmeras em Miniatura (Durante Transmissão de Tela) */
 .cams-overlay {
   position: absolute;
-  top: 64px;
-  right: 20px;
+  top: 60px;
+  right: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   z-index: 100;
 }
 
 .cam-box {
-  width: clamp(180px, 20vw, 240px);
+  width: clamp(170px, 20vw, 240px);
   aspect-ratio: 16 / 9;
   background: #14151a;
   border-radius: 12px;
@@ -251,7 +263,6 @@ header#main-header {
   z-index: 1;
 }
 
-/* Tamanho da Foto de Perfil */
 .avatar-placeholder img {
   width: 75px;
   height: 75px;
@@ -260,29 +271,27 @@ header#main-header {
   border: 3px solid #5865f2;
 }
 
-/* Nome e Status do Avatar */
 .avatar-name { 
-  font-size: 16px; 
+  font-size: 15px; 
   font-weight: bold; 
   color: #ffffff; 
   margin-top: 4px; 
 }
 
 .avatar-status { 
-  font-size: 13px; 
+  font-size: 12px; 
   color: #b5bac1; 
   font-weight: 500;
 }
 
-/* Plaquinha de Nome */
 .cam-label {
   position: absolute;
   bottom: 8px;
   left: 8px;
   background: rgba(0, 0, 0, 0.78);
-  padding: 5px 10px;
+  padding: 4px 8px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #fff;
   z-index: 3;
@@ -292,9 +301,8 @@ header#main-header {
   box-shadow: 0 2px 8px rgba(0,0,0,0.5);
 }
 
-/* Ícone de Mudo */
 .mute-indicator { 
-  font-size: 16px; 
+  font-size: 15px; 
   color: #ff5555; 
   display: inline-flex;
   align-items: center;
@@ -302,7 +310,6 @@ header#main-header {
 
 .mute-indicator.hidden { display: none; }
 
-/* Botão de Ocultar Câmera */
 .btn-cam-action {
   position: absolute;
   top: 8px;
@@ -329,11 +336,10 @@ header#main-header {
   transform: scale(1.1);
 }
 
-/* Aba Flutuante para Restaurar Câmera */
 .restore-cam-tab {
   position: absolute;
   top: 64px;
-  right: 20px;
+  right: 16px;
   background: rgba(20, 22, 28, 0.9);
   backdrop-filter: blur(8px);
   border: 1px solid #5865f2;
@@ -351,11 +357,6 @@ header#main-header {
   gap: 6px;
 }
 
-.restore-cam-tab:hover {
-  background: #5865f2;
-  transform: scale(1.05);
-}
-
 .restore-cam-tab.hidden {
   display: none !important;
 }
@@ -363,19 +364,20 @@ header#main-header {
 /* Rodapé / Dock Flutuante */
 footer#main-footer {
   position: absolute;
-  bottom: 24px;
+  bottom: 20px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(20, 22, 28, 0.85);
+  background: rgba(20, 22, 28, 0.92);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 40px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   z-index: 900;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
   max-width: 95vw;
   transition: opacity 0.35s ease, transform 0.35s ease;
   pointer-events: auto;
@@ -397,28 +399,15 @@ footer#main-footer {
   transition: all 0.2s ease;
 }
 
-.dock-btn:hover { background: #3c3f4a; transform: translateY(-2px); }
+.dock-btn:hover { background: #3c3f4a; }
 .dock-btn.btn-highlight { background: #5865f2; }
-.dock-btn.btn-highlight:hover { background: #4752c4; }
-
-/* Botão de Desconectar / Chamada */
-.dock-btn.btn-danger { 
-  background: #ed4245; 
-}
-.dock-btn.btn-danger:hover { 
-  background: #c03537; 
-}
-
-/* Botão de Microfone Mutado */
-.dock-btn.btn-active { 
-  background: #ed4245; 
-  color: #ffffff; 
-}
+.dock-btn.btn-danger { background: #ed4245; }
+.dock-btn.btn-active { background: #ed4245; color: #ffffff; }
 
 .call-timer-badge {
-  background: rgba(17, 18, 20, 0.8);
+  background: rgba(17, 18, 20, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: bold;
@@ -429,18 +418,18 @@ footer#main-footer {
 .volume-container {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(32, 34, 37, 0.8);
-  padding: 6px 12px;
+  gap: 6px;
+  background: rgba(32, 34, 37, 0.85);
+  padding: 5px 10px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 
 .volume-container.hidden { display: none !important; }
-.volume-container input[type="range"] { width: 55px; cursor: pointer; }
+.volume-container input[type="range"] { width: 50px; cursor: pointer; }
 
-/* Ocultação Automática (Modo Imersivo) */
+/* Ocultação Automática */
 body.autohide-controls header#main-header {
   opacity: 0 !important;
   transform: translateY(-100%) !important;
@@ -465,7 +454,6 @@ body.autohide-controls.show-controls footer#main-footer {
   pointer-events: auto !important;
 }
 
-/* HUD de Volume */
 .volume-hud {
   position: absolute;
   top: 50%; left: 50%;
@@ -485,7 +473,7 @@ body.autohide-controls.show-controls footer#main-footer {
 }
 .volume-hud.visible { opacity: 1; }
 
-/* BUCKET LIST / GALERIA DE METAS */
+/* BUCKET LIST */
 .bucket-tabs-container {
   display: flex;
   gap: 6px;
@@ -506,7 +494,6 @@ body.autohide-controls.show-controls footer#main-footer {
   transition: all 0.2s ease;
 }
 
-.bucket-tab:hover { background: #2f3136; color: #fff; }
 .bucket-tab.active { background: #5865f2; color: #fff; border-color: #5865f2; font-weight: bold; }
 
 .bucket-items-list {
@@ -526,12 +513,10 @@ body.autohide-controls.show-controls footer#main-footer {
   padding: 8px 12px;
   border-radius: 6px;
   border: 1px solid #23242b;
-  transition: all 0.2s ease;
 }
 
-.bucket-item-row:hover { border-color: #3b3e45; }
 .bucket-item-left { display: flex; align-items: center; gap: 10px; flex: 1; }
-.bucket-item-text { font-size: 13px; color: #dbdee1; transition: all 0.2s ease; }
+.bucket-item-text { font-size: 13px; color: #dbdee1; }
 .bucket-item-row.completed .bucket-item-text { text-decoration: line-through; color: #6d727a; }
 
 .btn-bucket-delete {
@@ -540,10 +525,7 @@ body.autohide-controls.show-controls footer#main-footer {
   color: #ed4245;
   cursor: pointer;
   font-size: 13px;
-  opacity: 0.6;
-  transition: opacity 0.2s ease;
 }
-.btn-bucket-delete:hover { opacity: 1; }
 
 .bucket-footer {
   display: flex;
@@ -556,11 +538,12 @@ body.autohide-controls.show-controls footer#main-footer {
   padding-top: 10px;
 }
 
-/* Gaveta Lateral de Notas */
+/* Gaveta Lateral */
 .notes-drawer {
   position: fixed;
   top: 0; right: -320px;
   width: 320px; height: 100vh;
+  height: 100dvh;
   background: #18191e;
   border-left: 1px solid #2f3136;
   z-index: 100001;
@@ -577,7 +560,6 @@ body.autohide-controls.show-controls footer#main-footer {
   color: #e3e5e8; border-radius: 8px; padding: 12px;
   resize: none; outline: none; font-size: 13px; line-height: 1.4;
   user-select: auto !important;
-  pointer-events: auto !important;
 }
 .sync-status { font-size: 11px; color: #3ba55d; text-align: right; }
 
@@ -585,46 +567,36 @@ body.autohide-controls.show-controls footer#main-footer {
 .modal-backdrop {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  height: 100dvh;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(6px);
   z-index: 99999;
   align-items: center;
   justify-content: center;
-  -webkit-app-region: no-drag !important;
 }
 
-.modal-backdrop.active {
-  display: flex !important;
-}
+.modal-backdrop.active { display: flex !important; }
 
 .modal-content {
   background: #1a1c23;
   border: 1px solid #2b2d35;
   border-radius: 14px;
-  padding: 22px;
+  padding: 20px;
   width: 92%;
   max-width: 440px;
-  max-height: 90vh;
+  max-height: 85vh;
+  max-height: 85dvh;
   overflow-y: auto;
   box-shadow: 0 16px 40px rgba(0,0,0,0.8);
   position: relative;
   z-index: 100000;
-  pointer-events: auto !important;
   user-select: auto !important;
-  -webkit-app-region: no-drag !important;
 }
 
-.modal-content * {
-  user-select: auto !important;
-  pointer-events: auto !important;
-  -webkit-app-region: no-drag !important;
-}
-
-.modal-subtitle { font-size: 12px; color: #949ba4; margin-bottom: 14px; }
+.modal-content * { user-select: auto !important; }
+.modal-subtitle { font-size: 12px; color: #949ba4; margin-bottom: 12px; }
 .form-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
 .form-group label { font-size: 12px; color: #b5bac1; font-weight: 500; }
 
@@ -634,7 +606,7 @@ body.autohide-controls.show-controls footer#main-footer {
   background: #111214;
   border: 1px solid #2b2d31;
   color: #e3e5e8;
-  padding: 9px;
+  padding: 8px 10px;
   border-radius: 6px;
   outline: none;
   font-size: 13px;
@@ -645,18 +617,12 @@ body.autohide-controls.show-controls footer#main-footer {
   background: #111214;
   border: 1px solid #2b2d31;
   color: #e3e5e8;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border-radius: 6px;
   outline: none;
   font-size: 12px;
   cursor: pointer;
   width: 100%;
-  pointer-events: auto !important;
-}
-
-.device-select option {
-  background: #1a1c23;
-  color: #fff;
 }
 
 .btn-sm {
@@ -664,27 +630,25 @@ body.autohide-controls.show-controls footer#main-footer {
   border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
   display: inline-flex; align-items: center; gap: 4px; line-height: 1;
 }
-.btn-sm:hover { background: #4752c4; }
 .btn-secondary { background: #2f3136; }
 .btn-toggle-on { background: #23a55a; }
 .btn-toggle-off { background: #4e5058; color: #b9bbbe; }
 .btn-cancel { background: transparent; border: 1px solid #4e5058; }
 
 .roulette-result {
-  margin: 14px 0; padding: 14px; background: #111214; border: 1px dashed #5865f2;
-  border-radius: 8px; text-align: center; font-size: 15px; font-weight: bold; color: #ff7597;
+  margin: 12px 0; padding: 12px; background: #111214; border: 1px dashed #5865f2;
+  border-radius: 8px; text-align: center; font-size: 14px; font-weight: bold; color: #ff7597;
 }
 
-.avatar-preview-wrapper { display: flex; align-items: center; gap: 14px; }
-#profile-preview-img { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #5865f2; }
-.sources-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: 360px; overflow-y: auto; }
+.avatar-preview-wrapper { display: flex; align-items: center; gap: 12px; }
+#profile-preview-img { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #5865f2; }
+.sources-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 320px; overflow-y: auto; }
 .source-card {
   background: #111214; border: 2px solid #2b2d31; border-radius: 8px;
   padding: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-.source-card:hover { border-color: #5865f2; }
-.source-thumb { width: 100%; height: 85px; object-fit: cover; border-radius: 4px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.source-thumb { width: 100%; height: 80px; object-fit: cover; border-radius: 4px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 /* Botão PiP */
 #btn-pip-restore {
@@ -695,36 +659,77 @@ body.autohide-controls.show-controls footer#main-footer {
 }
 body.pip-active #btn-pip-restore { display: flex !important; }
 body.pip-active header, body.pip-active footer, body.pip-active #box-local, body.pip-active #main-stream { display: none !important; }
-body.pip-active #stage { width: 100vw !important; height: 100vh !important; }
-body.pip-active #box-remote { width: 100vw !important; height: 100vh !important; max-width: 100% !important; border-radius: 0 !important; }
+body.pip-active #stage { width: 100vw !important; height: 100vh !important; height: 100dvh !important; }
+body.pip-active #box-remote { width: 100vw !important; height: 100vh !important; height: 100dvh !important; max-width: 100% !important; border-radius: 0 !important; }
 
-/* ADAPTAÇÕES RESPONSIVAS PARA SMARTPHONES (Android / iPhone) */
+/* REGRAS ESPECÍFICAS PARA CELULAR (ANDROID / IPHONE) */
 @media (max-width: 768px) {
+  header#main-header {
+    height: auto;
+    padding: 10px 12px 6px 12px;
+  }
+
+  .header-left {
+    max-width: 50%;
+    overflow: hidden;
+  }
+
+  .love-counter-badge {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .badge {
+    display: none; /* No celular economiza espaço para os botões */
+  }
+
+  .header-right {
+    gap: 5px;
+  }
+
+  .btn-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+
   #stage.camera-focus-mode .cams-overlay {
     flex-direction: column !important;
-    gap: 16px !important;
-    padding: 60px 12px 90px 12px !important;
+    gap: 12px !important;
+    padding: 60px 14px 90px 14px !important;
+    justify-content: center !important;
+    align-items: center !important;
   }
 
   #stage.camera-focus-mode .cam-box {
-    width: 90vw !important;
-    max-width: 95vw !important;
+    width: 100% !important;
+    max-width: 88vw !important;
+    height: auto !important;
     aspect-ratio: 16 / 9;
+    border-radius: 14px !important;
+  }
+
+  #stage.camera-focus-mode .avatar-placeholder img {
+    width: 70px !important;
+    height: 70px !important;
   }
 
   footer#main-footer {
-    bottom: 12px;
+    bottom: 16px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
     padding: 6px 12px;
     gap: 6px;
   }
 
   .dock-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 13px;
+    width: 38px;
+    height: 38px;
+    font-size: 14px;
   }
 
-  .volume-container {
-    display: none !important;
+  .volume-container,
+  #btn-screen,
+  #btn-pip-mode {
+    display: none !important; /* Desativa botões que não são do celular */
   }
 }
