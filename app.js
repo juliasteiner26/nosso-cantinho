@@ -58,7 +58,7 @@ let audioContext = null;
 let micGateGain = null;
 let micGateInterval = null;
 
-// Atalho Push-to-Mute (Desktop)
+// Atalho Push-to-Mute Local (Navegador)
 let pushToMuteConfig = JSON.parse(localStorage.getItem('push_to_mute_config')) || {
   type: 'keyboard',
   code: 'KeyM',
@@ -69,14 +69,14 @@ let isListeningForBinding = false;
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
 let myProfile = {
-  name: localStorage.getItem('profile_name') || (isHost ? 'Host' : 'Lobinha'),
+  name: localStorage.getItem('profile_name') || (isHost ? 'Mozin dela' : 'Lobinha'),
   avatar: localStorage.getItem('profile_avatar') || defaultAvatar,
   status: localStorage.getItem('profile_status') || '🟢 Disponível',
   startDate: localStorage.getItem('profile_start_date') || '2024-01-01'
 };
 
 let remoteProfile = {
-  name: isHost ? 'Lobinha' : 'Host',
+  name: isHost ? 'Lobinha' : 'Mozin dela',
   avatar: defaultAvatar,
   status: 'Aguardando...',
   startDate: myProfile.startDate
@@ -95,7 +95,6 @@ let defaultBucketData = {
     ]
   }
 };
-
 let bucketData = JSON.parse(localStorage.getItem('shared_bucket_list')) || defaultBucketData;
 
 // Elementos DOM
@@ -137,6 +136,7 @@ const btnPipRestore = document.getElementById('btn-pip-restore');
 const btnHideSelfCam = document.getElementById('btn-hide-self-cam');
 const btnRestoreSelfCam = document.getElementById('btn-restore-self-cam');
 const btnToggleMirrorMyCam = document.getElementById('btn-toggle-mirror-my-cam');
+const btnFullscreenCam = document.getElementById('btn-fullscreen-cam');
 
 const screenPickerModal = document.getElementById('screen-picker-modal');
 const screenSourcesList = document.getElementById('screen-sources-list');
@@ -149,6 +149,7 @@ const btnOpenNotes = document.getElementById('btn-open-notes');
 const btnCloseNotes = document.getElementById('btn-close-notes');
 const sharedNotesArea = document.getElementById('shared-notes-area');
 const notesSyncStatus = document.getElementById('notes-sync-status');
+const notesUnreadDot = document.getElementById('notes-unread-dot');
 
 const rouletteModal = document.getElementById('roulette-modal');
 const btnOpenRoulette = document.getElementById('btn-open-roulette');
@@ -192,23 +193,44 @@ const btnCloseSettings = document.getElementById('btn-close-settings');
 
 const micVolSlider = document.getElementById('remote-mic-volume');
 const micVolValueDisplay = document.getElementById('mic-vol-value');
-const micVolIcon = document.getElementById('mic-vol-icon');
 const screenVolSlider = document.getElementById('remote-screen-volume');
 const screenVolValueDisplay = document.getElementById('screen-vol-value');
-const screenVolIcon = document.getElementById('screen-vol-icon');
 
-// Inicia em modo de foco de câmera
 if (stageEl) stageEl.classList.add('camera-focus-mode');
-
 localCam.muted = true;
 remoteCam.muted = true;
 remoteVoiceAudio.muted = false;
 mainStream.muted = false;
 
-// Controle de Espelhamento Sincronizado
+// 1. ATALHO GLOBAL ELECTRON (Push-to-Mute em jogos como FiveM)
+if (window.electronAPI && window.electronAPI.onGlobalMuteToggle) {
+  window.electronAPI.onGlobalMuteToggle(() => {
+    toggleMicState();
+  });
+}
+
+// 2. CÂMERA REMOTA EM TELA CHEIA (Duplo clique ou botão)
+function toggleRemoteFullscreenCam() {
+  boxRemote.classList.toggle('fullscreen-focus');
+}
+
+if (boxRemote) {
+  boxRemote.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    toggleRemoteFullscreenCam();
+  });
+}
+
+if (btnFullscreenCam) {
+  btnFullscreenCam.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleRemoteFullscreenCam();
+  });
+}
+
+// Espelhamento
 function updateMirrorUI() {
   if (boxLocal) boxLocal.classList.toggle('mirrored', isMyCamMirrored);
-
   if (btnToggleMirrorMyCam) {
     btnToggleMirrorMyCam.innerText = isMyCamMirrored 
       ? '🪞 Espelhar Minha Câmera: Ativado' 
@@ -237,12 +259,12 @@ window.addEventListener('touchstart', unlockMediaAudio);
 window.addEventListener('keydown', unlockMediaAudio);
 
 function updateProfileUI() {
-  if (avatarImgLocal) avatarImgLocal.src = myProfile.avatar;
+  if (avatarImgLocal) avatarImgLocal.src = myProfile.avatar || defaultAvatar;
   if (avatarNameLocal) avatarNameLocal.innerText = myProfile.name;
   if (avatarStatusLocal) avatarStatusLocal.innerText = myProfile.status;
   if (nameTagLocal) nameTagLocal.innerText = `${myProfile.name} (Você)`;
 
-  if (avatarImgRemote) avatarImgRemote.src = remoteProfile.avatar;
+  if (avatarImgRemote) avatarImgRemote.src = remoteProfile.avatar || defaultAvatar;
   if (avatarNameRemote) avatarNameRemote.innerText = remoteProfile.name;
   if (avatarStatusRemote) avatarStatusRemote.innerText = remoteProfile.status;
   if (nameTagRemote) nameTagRemote.innerText = remoteProfile.name;
@@ -272,31 +294,64 @@ if (btnRestoreSelfCam) {
   });
 }
 
-// Contador de Relacionamento
+// 3. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS (Normalização à meia-noite)
 function updateLoveCounter() {
-  const start = new Date(myProfile.startDate);
-  const now = new Date();
-  if (isNaN(start.getTime())) return;
-
-  const diffMs = now - start;
-  const totalDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (!myProfile.startDate) return;
+  const [year, month, day] = myProfile.startDate.split('-').map(Number);
   
+  const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+  if (isNaN(startDate.getTime())) return;
+
+  const diffMs = today.getTime() - startDate.getTime();
+  const totalDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
   const daysBadge = document.getElementById('love-days-display');
   if (daysBadge) daysBadge.innerText = `💖 ${totalDays} dias juntas`;
 
-  const years = Math.floor(totalDays / 365);
-  const months = Math.floor((totalDays % 365) / 30);
-  const days = (totalDays % 365) % 30;
+  let y1 = startDate.getFullYear();
+  let m1 = startDate.getMonth();
+  let d1 = startDate.getDate();
+
+  let y2 = today.getFullYear();
+  let m2 = today.getMonth();
+  let d2 = today.getDate();
+
+  let years = y2 - y1;
+  let months = m2 - m1;
+  let days = d2 - d1;
+
+  if (days < 0) {
+    months--;
+    const prevMonthDays = new Date(y2, m2, 0).getDate();
+    days += prevMonthDays;
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  const parts = [];
+  if (years > 0) parts.push(`${years} ${years === 1 ? 'ano' : 'anos'}`);
+  if (months > 0) parts.push(`${months} ${months === 1 ? 'mês' : 'meses'}`);
+  if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? 'dia' : 'dias'}`);
 
   const tooltipFull = document.getElementById('tooltip-full-time');
   if (tooltipFull) {
-    tooltipFull.innerText = `${years > 0 ? years + ' ano(s), ' : ''}${months} mês(es) e ${days} dia(s) compartilhando momentos ❤️`;
+    tooltipFull.innerText = `${parts.join(' e ')} compartilhando momentos ❤️`;
   }
 
-  const nextMonthDays = 30 - days;
+  let nextAnniversary = new Date(y2, m2, d1, 0, 0, 0, 0);
+  if (nextAnniversary <= today) {
+    nextAnniversary = new Date(y2, m2 + 1, d1, 0, 0, 0, 0);
+  }
+  const daysUntilNext = Math.round((nextAnniversary.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
   const tooltipNext = document.getElementById('tooltip-next-event');
   if (tooltipNext) {
-    tooltipNext.innerText = `🎉 Próximo mesversário em ${nextMonthDays} dia(s)!`;
+    tooltipNext.innerText = `🎉 Próximo mesversário em ${daysUntilNext} ${daysUntilNext === 1 ? 'dia' : 'dias'}!`;
   }
 }
 setInterval(updateLoveCounter, 60000);
@@ -406,7 +461,6 @@ function renderBucketUI() {
 
     const row = document.createElement('div');
     row.className = `bucket-item-row ${item.done ? 'completed' : ''}`;
-
     row.innerHTML = `
       <div class="bucket-item-left">
         <input type="checkbox" ${item.done ? 'checked' : ''} style="cursor:pointer; width:16px; height:16px;">
@@ -474,11 +528,10 @@ if (btnDeleteActiveCategory) {
   });
 }
 
-function toggleBucketModal() {
+if (btnOpenBucket) btnOpenBucket.addEventListener('click', () => {
   renderBucketUI();
-  bucketModal.classList.toggle('active');
-}
-if (btnOpenBucket) btnOpenBucket.addEventListener('click', toggleBucketModal);
+  bucketModal.classList.add('active');
+});
 if (btnCloseBucketTop) btnCloseBucketTop.addEventListener('click', () => bucketModal.classList.remove('active'));
 
 // Redimensionamento Inteligente
@@ -492,27 +545,14 @@ const savedCamSize = localStorage.getItem('custom_cam_width') || '680';
 applyCamSize(savedCamSize);
 if (camSizeSlider) {
   camSizeSlider.value = savedCamSize;
-  camSizeSlider.addEventListener('input', (e) => {
-    applyCamSize(e.target.value);
-  });
+  camSizeSlider.addEventListener('input', (e) => applyCamSize(e.target.value));
 }
 
-// Plano de Fundo Personalizado
-function loadSavedBackground() {
-  const savedBg = localStorage.getItem('app_stage_background');
-  if (savedBg) {
-    stageEl.style.backgroundImage = `url("${savedBg}")`;
-  } else {
-    stageEl.style.backgroundImage = 'none';
-  }
-}
-loadSavedBackground();
-
+// Fundo
 if (bgFileInput) {
   bgFileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const bgUrl = event.target.result;
@@ -530,7 +570,10 @@ if (btnResetBg) {
   });
 }
 
-// Gravação e Execução do Push-to-Mute
+const savedBg = localStorage.getItem('app_stage_background');
+if (savedBg && stageEl) stageEl.style.backgroundImage = `url("${savedBg}")`;
+
+// 4. ATALHO PUSH-TO-MUTE LOCAL
 function updateBindingButtonLabel() {
   if (btnRecordKey) {
     btnRecordKey.innerText = `Atalho: ${pushToMuteConfig.label}`;
@@ -543,7 +586,7 @@ if (btnRecordKey) {
   btnRecordKey.addEventListener('click', (e) => {
     e.preventDefault();
     isListeningForBinding = true;
-    btnRecordKey.innerText = '🔴 Pressione qualquer tecla ou botão do mouse...';
+    btnRecordKey.innerText = '🔴 Pressione qualquer tecla ou botão...';
     btnRecordKey.classList.add('btn-highlight');
   });
 }
@@ -584,34 +627,6 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
-window.addEventListener('mousedown', (e) => {
-  if (isListeningForBinding) {
-    if (e.button === 0 && e.target === btnRecordKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-    let mouseLabel = `Mouse ${e.button}`;
-    if (e.button === 1) mouseLabel = 'Mouse Meio (Scroll)';
-    else if (e.button === 3) mouseLabel = 'Mouse 4 (Lateral Traseiro)';
-    else if (e.button === 4) mouseLabel = 'Mouse 5 (Lateral Frontal)';
-
-    pushToMuteConfig = { type: 'mouse', code: e.button, label: mouseLabel };
-    localStorage.setItem('push_to_mute_config', JSON.stringify(pushToMuteConfig));
-    isListeningForBinding = false;
-    updateBindingButtonLabel();
-    return;
-  }
-
-  if (pushToMuteConfig.type === 'mouse' && e.button === pushToMuteConfig.code) {
-    activatePushMute();
-  }
-}, true);
-
-window.addEventListener('mouseup', (e) => {
-  if (pushToMuteConfig.type === 'mouse' && e.button === pushToMuteConfig.code) {
-    deactivatePushMute();
-  }
-});
-
 function activatePushMute() {
   if (micStream && !isMicMuted) {
     isPushMuted = true;
@@ -640,7 +655,7 @@ function deactivatePushMute() {
   }
 }
 
-// Substituição Dinâmica de Trilha sem derrubar chamada
+// 5. SUBSTITUIÇÃO SEGURA DE TRILHAS (Evita instabilidades e quedas)
 function replaceTrackOnCall(newTrack, kind) {
   if (mainCall && mainCall.peerConnection) {
     const senders = mainCall.peerConnection.getSenders();
@@ -651,7 +666,7 @@ function replaceTrackOnCall(newTrack, kind) {
   }
 }
 
-// Controles de Volume
+// Volumes
 function showVolumeHUD(icon, value) {
   hudIcon.innerText = icon;
   hudText.innerText = `${Math.round(value * 100)}%`;
@@ -691,7 +706,7 @@ mainStream.addEventListener('wheel', (e) => {
   showVolumeHUD('🖥️', screenVolumeMultiplier);
 });
 
-// OCULTAÇÃO AUTOMÁTICA DE BARRAS
+// Ocultação Automática
 function updateAutohideState() {
   const isStreamingActive = isScreenSharing || (mainStream.srcObject !== null);
   const isFs = !!document.fullscreenElement;
@@ -726,7 +741,6 @@ function toggleFullscreen() {
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
   }
 }
-
 document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
 
 stageEl.addEventListener('dblclick', (e) => {
@@ -740,12 +754,6 @@ mainStream.addEventListener('dblclick', (e) => {
 });
 
 document.addEventListener('fullscreenchange', updateAutohideState);
-
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  }
-});
 
 // Modo Leve
 btnLowGpu.addEventListener('click', () => {
@@ -767,7 +775,7 @@ function togglePiP() {
 btnPipMode.addEventListener('click', togglePiP);
 if (btnPipRestore) btnPipRestore.addEventListener('click', togglePiP);
 
-// Dispositivos de Áudio e Vídeo
+// Dispositivos
 async function loadDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -806,31 +814,15 @@ async function loadDevices() {
       }
     });
 
-    if (audioOutputSelect && audioOutputSelect.value) {
-      if (typeof remoteVoiceAudio.setSinkId === 'function') {
-        remoteVoiceAudio.setSinkId(audioOutputSelect.value).catch(() => {});
-      }
+    if (audioOutputSelect && audioOutputSelect.value && typeof remoteVoiceAudio.setSinkId === 'function') {
+      remoteVoiceAudio.setSinkId(audioOutputSelect.value).catch(() => {});
     }
   } catch (err) {
     console.error('Erro ao listar dispositivos:', err);
   }
 }
 
-if (audioOutputSelect) {
-  audioOutputSelect.addEventListener('change', async () => {
-    const sinkId = audioOutputSelect.value;
-    localStorage.setItem('selected_audio_out_id', sinkId);
-    try {
-      if (typeof remoteVoiceAudio.setSinkId === 'function') {
-        await remoteVoiceAudio.setSinkId(sinkId);
-      }
-    } catch (err) {
-      console.warn('Erro ao alterar saída de áudio:', err);
-    }
-  });
-}
-
-// Microfone com Noise Gate
+// Microfone
 async function startMicrophone() {
   if (micStream) micStream.getTracks().forEach(t => t.stop());
 
@@ -933,7 +925,6 @@ micSelect.addEventListener('change', () => {
   }
 });
 
-// Trilha de vídeo nula segura
 function createBlackVideoTrack() {
   const canvas = document.createElement('canvas');
   canvas.width = 2;
@@ -946,7 +937,7 @@ function createBlackVideoTrack() {
   return blackTrack;
 }
 
-// Câmera (Compatível com Celular e PC)
+// 6. CÂMERA (Ciclo de Vida Blindado)
 async function toggleCamera() {
   if (isCamOn) {
     if (camStream) {
@@ -994,7 +985,7 @@ cameraSelect.addEventListener('change', () => {
   }
 });
 
-// Transmissão de Tela (Desktop Electron)
+// 7. TRANSMISSÃO DE TELA (Desktop Electron)
 async function toggleScreenShare() {
   if (isScreenSharing) {
     stopScreenSharing();
@@ -1114,8 +1105,13 @@ function stopScreenSharing() {
 btnScreen.addEventListener('click', toggleScreenShare);
 if (btnCloseScreenPicker) btnCloseScreenPicker.addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
-// Bloco de Notas
-function toggleNotes() { notesDrawer.classList.toggle('open'); }
+// 8. BLOCO DE NOTAS COM INDICADOR VISUAL (Bolinha Vermelha)
+function toggleNotes() {
+  notesDrawer.classList.toggle('open');
+  if (notesDrawer.classList.contains('open')) {
+    if (notesUnreadDot) notesUnreadDot.classList.add('hidden');
+  }
+}
 btnOpenNotes.addEventListener('click', toggleNotes);
 btnCloseNotes.addEventListener('click', () => notesDrawer.classList.remove('open'));
 
@@ -1144,12 +1140,12 @@ btnSpinRoulette.addEventListener('click', () => {
   sendDataMessage({ type: 'ROULETTE_RESULT', result: picked });
 });
 
-// Modal Configurações
+// Configurações
 function toggleSettings() { settingsModal.classList.toggle('active'); }
 btnOpenSettings.addEventListener('click', toggleSettings);
 btnCloseSettings.addEventListener('click', () => settingsModal.classList.remove('active'));
 
-// WebRTC PeerJS & Chamada
+// WebRTC PeerJS Call
 function getMainCallStream() {
   const tracks = [];
   if (micStream && micStream.getAudioTracks().length > 0) {
@@ -1190,6 +1186,7 @@ function setupDataConnection(conn) {
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
     sendDataMessage({ type: 'NOTES_UPDATE', text: sharedNotesArea.value });
     sendDataMessage({ type: 'MUTE_STATE', isMuted: isMicMuted });
+    sendDataMessage({ type: 'CAM_STATE', isCamOn: isCamOn });
     sendDataMessage({ type: 'ROULETTE_OPTIONS_UPDATE', options: rouletteOptionsInput.value });
     sendDataMessage({ type: 'BUCKET_UPDATE', bucket: bucketData });
     sendDataMessage({ type: 'MIRROR_STATE', isMirrored: isMyCamMirrored });
@@ -1218,6 +1215,10 @@ function setupDataConnection(conn) {
       sharedNotesArea.value = data.text;
       localStorage.setItem('shared_notes_content', data.text);
       notesSyncStatus.innerText = '🟢 Sincronizado por ela';
+
+      if (!notesDrawer.classList.contains('open') && notesUnreadDot) {
+        notesUnreadDot.classList.remove('hidden');
+      }
     } else if (data.type === 'ROULETTE_OPTIONS_UPDATE') {
       rouletteOptionsInput.value = data.options;
     } else if (data.type === 'ROULETTE_RESULT') {
@@ -1258,6 +1259,7 @@ peer.on('call', call => {
   if (call.metadata && call.metadata.type === 'screen') {
     call.answer();
     call.on('stream', stream => {
+      if (stageEl) stageEl.classList.remove('camera-focus-mode');
       mainStream.srcObject = stream;
       mainStream.muted = false;
       mainStream.volume = Math.min(screenVolumeMultiplier, 1.0);
@@ -1295,7 +1297,6 @@ function attachMainCallEvents(call) {
     if (videoTracks.length > 0) {
       remoteCam.srcObject = new MediaStream([videoTracks[0]]);
       remoteCam.play().catch(() => {});
-      boxRemote.classList.add('video-active');
     }
 
     if (statusBadge) {
@@ -1321,13 +1322,13 @@ function attachMainCallEvents(call) {
   });
 }
 
-// Modal Perfil
+// Perfil
 let tempAvatarBase64 = myProfile.avatar;
 function openProfile() {
   profileNameInput.value = myProfile.name;
   if (profileStatusInput) profileStatusInput.value = myProfile.status || '';
   profileDateInput.value = myProfile.startDate;
-  profilePreviewImg.src = myProfile.avatar;
+  profilePreviewImg.src = myProfile.avatar || defaultAvatar;
   tempAvatarBase64 = myProfile.avatar;
   updateBindingButtonLabel();
   profileModal.classList.add('active');
@@ -1374,11 +1375,10 @@ btnSaveProfile.addEventListener('click', () => {
   sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
 });
 
-const handleHangup = () => {
+document.getElementById('btn-hangup').addEventListener('click', () => {
   if (mainCall) mainCall.close();
   window.location.reload();
-};
-document.getElementById('btn-hangup').addEventListener('click', handleHangup);
+});
 
 loadDevices();
 renderBucketUI();
