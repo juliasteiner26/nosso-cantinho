@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
@@ -25,10 +25,8 @@ function createWindow() {
     }
   });
 
-  // URL do GitHub Pages (atualiza sozinho sem precisar reenviar o executável)
   const ONLINE_APP_URL = 'https://juliasteiner26.github.io/nosso-cantinho/';
 
-  // Tenta carregar online; se estiver sem internet ou em teste local, carrega o arquivo local
   if (ONLINE_APP_URL.includes('SEU_USUARIO')) {
     mainWindow.loadFile('index.html');
   } else {
@@ -37,18 +35,9 @@ function createWindow() {
     });
   }
 
-  // Permite dar F5 ou Ctrl+R para recarregar ignorando cache
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
       mainWindow.webContents.reloadIgnoringCache();
-    }
-  });
-
-  // Registra F8 como tecla global (funciona dentro do FiveM / jogos)
-  const shortcutKey = 'F8';
-  globalShortcut.register(shortcutKey, () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('global-mute-toggle');
     }
   });
 }
@@ -80,10 +69,6 @@ ipcMain.on('toggle-pip-mode', (event, enable) => {
 });
 
 app.whenReady().then(createWindow);
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
