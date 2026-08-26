@@ -58,10 +58,11 @@ let audioContext = null;
 let micGateGain = null;
 let micGateInterval = null;
 
-// Atalho Push-to-Mute Local (Navegador)
+// Atalho Push-to-Mute Local (Navegador com suporte a Mouse Lateral 4 e 5)
 let pushToMuteConfig = JSON.parse(localStorage.getItem('push_to_mute_config')) || {
   type: 'keyboard',
   code: 'KeyM',
+  button: 0,
   label: 'Tecla M'
 };
 let isListeningForBinding = false;
@@ -72,7 +73,7 @@ let myProfile = {
   name: localStorage.getItem('profile_name') || (isHost ? 'Mozin dela' : 'Lobinha'),
   avatar: localStorage.getItem('profile_avatar') || defaultAvatar,
   status: localStorage.getItem('profile_status') || '🟢 Disponível',
-  startDate: localStorage.getItem('profile_start_date') || '2024-01-01'
+  startDate: localStorage.getItem('profile_start_date') || '2026-07-30'
 };
 
 let remoteProfile = {
@@ -209,13 +210,18 @@ if (window.electronAPI && window.electronAPI.onGlobalMuteToggle) {
   });
 }
 
-// 2. CÂMERA REMOTA EM TELA CHEIA (Duplo clique ou botão)
+// 2. CÂMERA REMOTA EM TELA CHEIA (Alternância e botão com ícone dinâmico)
 function toggleRemoteFullscreenCam() {
-  boxRemote.classList.toggle('fullscreen-focus');
+  const isNowFullscreen = boxRemote.classList.toggle('fullscreen-focus');
+  if (btnFullscreenCam) {
+    btnFullscreenCam.innerText = isNowFullscreen ? '✕' : '⛶';
+    btnFullscreenCam.title = isNowFullscreen ? 'Recolher câmera' : 'Expandir câmera dela';
+  }
 }
 
 if (boxRemote) {
   boxRemote.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.btn-cam-action')) return;
     e.stopPropagation();
     toggleRemoteFullscreenCam();
   });
@@ -224,6 +230,7 @@ if (boxRemote) {
 if (btnFullscreenCam) {
   btnFullscreenCam.addEventListener('click', (e) => {
     e.stopPropagation();
+    e.preventDefault();
     toggleRemoteFullscreenCam();
   });
 }
@@ -294,64 +301,74 @@ if (btnRestoreSelfCam) {
   });
 }
 
-// 3. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS (Normalização à meia-noite)
+// 3. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS
 function updateLoveCounter() {
-  if (!myProfile.startDate) return;
-  const [year, month, day] = myProfile.startDate.split('-').map(Number);
-  
-  const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  try {
+    let dateStr = myProfile.startDate || '2026-07-30';
+    let year, month, day;
 
-  if (isNaN(startDate.getTime())) return;
+    if (dateStr.includes('-')) {
+      [year, month, day] = dateStr.split('-').map(Number);
+    } else if (dateStr.includes('/')) {
+      [day, month, year] = dateStr.split('/').map(Number);
+    } else {
+      year = 2026; month = 7; day = 30;
+    }
 
-  const diffMs = today.getTime() - startDate.getTime();
-  const totalDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
-  const daysBadge = document.getElementById('love-days-display');
-  if (daysBadge) daysBadge.innerText = `💖 ${totalDays} dias juntas`;
+    if (isNaN(startDate.getTime())) return;
 
-  let y1 = startDate.getFullYear();
-  let m1 = startDate.getMonth();
-  let d1 = startDate.getDate();
+    let y1 = startDate.getFullYear();
+    let m1 = startDate.getMonth();
+    let d1 = startDate.getDate();
 
-  let y2 = today.getFullYear();
-  let m2 = today.getMonth();
-  let d2 = today.getDate();
+    let y2 = today.getFullYear();
+    let m2 = today.getMonth();
+    let d2 = today.getDate();
 
-  let years = y2 - y1;
-  let months = m2 - m1;
-  let days = d2 - d1;
+    let years = y2 - y1;
+    let months = m2 - m1;
+    let days = d2 - d1;
 
-  if (days < 0) {
-    months--;
-    const prevMonthDays = new Date(y2, m2, 0).getDate();
-    days += prevMonthDays;
-  }
-  if (months < 0) {
-    years--;
-    months += 12;
-  }
+    if (days < 0) {
+      months--;
+      days += 30;
+    }
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
 
-  const parts = [];
-  if (years > 0) parts.push(`${years} ${years === 1 ? 'ano' : 'anos'}`);
-  if (months > 0) parts.push(`${months} ${months === 1 ? 'mês' : 'meses'}`);
-  if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? 'dia' : 'dias'}`);
+    const totalDaysDisplay = (years === 0 && months === 0) ? days : Math.max(0, Math.round((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-  const tooltipFull = document.getElementById('tooltip-full-time');
-  if (tooltipFull) {
-    tooltipFull.innerText = `${parts.join(' e ')} compartilhando momentos ❤️`;
-  }
+    const daysBadge = document.getElementById('love-days-display');
+    if (daysBadge) daysBadge.innerText = `💖 ${totalDaysDisplay} dias juntas`;
 
-  let nextAnniversary = new Date(y2, m2, d1, 0, 0, 0, 0);
-  if (nextAnniversary <= today) {
-    nextAnniversary = new Date(y2, m2 + 1, d1, 0, 0, 0, 0);
-  }
-  const daysUntilNext = Math.round((nextAnniversary.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const parts = [];
+    if (years > 0) parts.push(`${years} ${years === 1 ? 'ano' : 'anos'}`);
+    if (months > 0) parts.push(`${months} ${months === 1 ? 'mês' : 'meses'}`);
+    if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? 'dia' : 'dias'}`);
 
-  const tooltipNext = document.getElementById('tooltip-next-event');
-  if (tooltipNext) {
-    tooltipNext.innerText = `🎉 Próximo mesversário em ${daysUntilNext} ${daysUntilNext === 1 ? 'dia' : 'dias'}!`;
+    const tooltipFull = document.getElementById('tooltip-full-time');
+    if (tooltipFull) {
+      tooltipFull.innerText = `${parts.join(' e ')} compartilhando momentos ❤️`;
+    }
+
+    let nextAnniversary = new Date(y2, m2, d1, 0, 0, 0, 0);
+    if (nextAnniversary <= today) {
+      nextAnniversary = new Date(y2, m2 + 1, d1, 0, 0, 0, 0);
+    }
+    const daysUntilNext = Math.max(1, Math.round((nextAnniversary.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+
+    const tooltipNext = document.getElementById('tooltip-next-event');
+    if (tooltipNext) {
+      tooltipNext.innerText = `🎉 Próximo mesversário em ${daysUntilNext} ${daysUntilNext === 1 ? 'dia' : 'dias'}!`;
+    }
+  } catch (err) {
+    console.error('Erro no contador:', err);
   }
 }
 setInterval(updateLoveCounter, 60000);
@@ -573,7 +590,7 @@ if (btnResetBg) {
 const savedBg = localStorage.getItem('app_stage_background');
 if (savedBg && stageEl) stageEl.style.backgroundImage = `url("${savedBg}")`;
 
-// 4. ATALHO PUSH-TO-MUTE LOCAL
+// 4. ATALHO PUSH-TO-MUTE COM SUPORTE TOTAL A BOTÕES LATERAIS DE MOUSE
 function updateBindingButtonLabel() {
   if (btnRecordKey) {
     btnRecordKey.innerText = `Atalho: ${pushToMuteConfig.label}`;
@@ -585,6 +602,7 @@ updateBindingButtonLabel();
 if (btnRecordKey) {
   btnRecordKey.addEventListener('click', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     isListeningForBinding = true;
     btnRecordKey.innerText = '🔴 Pressione qualquer tecla ou botão...';
     btnRecordKey.classList.add('btn-highlight');
@@ -594,7 +612,7 @@ if (btnRecordKey) {
 if (btnResetKey) {
   btnResetKey.addEventListener('click', (e) => {
     e.preventDefault();
-    pushToMuteConfig = { type: 'keyboard', code: 'KeyM', label: 'Tecla M' };
+    pushToMuteConfig = { type: 'keyboard', code: 'KeyM', button: 0, label: 'Tecla M' };
     localStorage.setItem('push_to_mute_config', JSON.stringify(pushToMuteConfig));
     updateBindingButtonLabel();
   });
@@ -607,6 +625,7 @@ window.addEventListener('keydown', (e) => {
     pushToMuteConfig = {
       type: 'keyboard',
       code: e.code,
+      button: 0,
       label: `Tecla ${e.key.toUpperCase() === ' ' ? 'Espaço' : e.key.toUpperCase()}`
     };
     localStorage.setItem('push_to_mute_config', JSON.stringify(pushToMuteConfig));
@@ -626,6 +645,46 @@ window.addEventListener('keyup', (e) => {
     deactivatePushMute();
   }
 });
+
+function handlePointerDown(e) {
+  if (isListeningForBinding) {
+    if (e.button === 0 && e.target === btnRecordKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    let mouseLabel = `Mouse Botão ${e.button}`;
+    if (e.button === 1) mouseLabel = 'Mouse Meio (Scroll)';
+    else if (e.button === 3) mouseLabel = 'Mouse Lateral 1 (Traseiro)';
+    else if (e.button === 4) mouseLabel = 'Mouse Lateral 2 (Frontal)';
+
+    pushToMuteConfig = {
+      type: 'mouse',
+      code: '',
+      button: e.button,
+      label: mouseLabel
+    };
+    localStorage.setItem('push_to_mute_config', JSON.stringify(pushToMuteConfig));
+    isListeningForBinding = false;
+    updateBindingButtonLabel();
+    return;
+  }
+
+  if (pushToMuteConfig.type === 'mouse' && e.button === pushToMuteConfig.button) {
+    e.preventDefault();
+    activatePushMute();
+  }
+}
+
+function handlePointerUp(e) {
+  if (pushToMuteConfig.type === 'mouse' && e.button === pushToMuteConfig.button) {
+    e.preventDefault();
+    deactivatePushMute();
+  }
+}
+
+window.addEventListener('pointerdown', handlePointerDown, true);
+window.addEventListener('pointerup', handlePointerUp, true);
+window.addEventListener('auxclick', (e) => e.preventDefault(), true);
 
 function activatePushMute() {
   if (micStream && !isMicMuted) {
@@ -655,7 +714,7 @@ function deactivatePushMute() {
   }
 }
 
-// 5. SUBSTITUIÇÃO SEGURA DE TRILHAS (Evita instabilidades e quedas)
+// 5. SUBSTITUIÇÃO SEGURA DE TRILHAS
 function replaceTrackOnCall(newTrack, kind) {
   if (mainCall && mainCall.peerConnection) {
     const senders = mainCall.peerConnection.getSenders();
@@ -734,14 +793,30 @@ function revealControlsTemporarily() {
 window.addEventListener('mousemove', revealControlsTemporarily);
 window.addEventListener('touchstart', revealControlsTemporarily);
 
+// Controle de Tela Cheia Real
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else if (document.documentElement.webkitRequestFullscreen) {
+      document.documentElement.webkitRequestFullscreen();
+    }
   } else {
-    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
   }
 }
-document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
+
+const btnFullscreen = document.getElementById('btn-fullscreen');
+if (btnFullscreen) {
+  btnFullscreen.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFullscreen();
+  });
+}
 
 stageEl.addEventListener('dblclick', (e) => {
   if (e.target.closest('.cam-box') || e.target.closest('.btn-cam-action') || e.target.closest('.restore-cam-tab')) return;

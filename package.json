@@ -1,0 +1,25 @@
+{
+  "name": "site-compartilhamento",
+  "version": "1.0.0",
+  "description": "App duo de chamada, streaming e utilidades",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.nossocantinho.app",
+    "productName": "Nosso Cantinho",
+    "win": {
+      "target": "portable"
+    }
+  }
+}

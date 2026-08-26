@@ -2,14 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nosso Cantinho</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.0">
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <!-- Botão de Restaurar Flutuante para o modo Sobrepor (PiP) -->
+  <!-- Botão Flutuante de Restaurar PiP -->
   <button id="btn-pip-restore" title="Restaurar tamanho normal">✕</button>
 
   <!-- Botão Flutuante para Restaurar Própria Câmera Oculta -->
@@ -21,7 +21,7 @@
   <header id="main-header">
     <div class="header-left">
       <div class="love-counter-badge" id="love-badge" title="Passar o mouse para ver detalhes">
-        <span id="love-days-display">💖 Juntas</span>
+        <span id="love-days-display">💖 Carregando...</span>
         <div class="love-tooltip" id="love-tooltip">
           <h4 id="tooltip-title">Nosso Tempo</h4>
           <p id="tooltip-full-time">Carregando marcos...</p>
@@ -36,7 +36,10 @@
     <!-- Barra de Ações Rápidas -->
     <div class="header-right">
       <button class="btn-icon" id="btn-open-bucket" title="Nossas Metas & Planos">📋</button>
-      <button class="btn-icon" id="btn-open-notes" title="Bloco de Notas">📝</button>
+      <button class="btn-icon badge-wrapper" id="btn-open-notes" title="Bloco de Notas">
+        📝
+        <span class="unread-dot hidden" id="notes-unread-dot"></span>
+      </button>
       <button class="btn-icon" id="btn-open-roulette" title="Sorteador de Decisões">🎲</button>
       <button class="btn-icon" id="btn-open-profile" title="Perfil & Personalização">👤</button>
       <button class="btn-icon" id="btn-open-settings" title="Dispositivos & Áudio">⚙️</button>
@@ -44,10 +47,10 @@
   </header>
 
   <!-- Palco Central -->
-  <div id="stage" class="camera-focus-mode">
+  <main id="stage" class="camera-focus-mode">
     <video id="main-stream" autoplay playsinline></video>
 
-    <!-- Indicador de Volume por Scroll (HUD) -->
+    <!-- Indicador HUD de Volume -->
     <div id="volume-hud" class="volume-hud">
       <span id="hud-icon">🎙️</span>
       <span id="hud-text">100%</span>
@@ -71,21 +74,22 @@
       </div>
 
       <!-- Box Remoto -->
-      <div class="cam-box" id="box-remote">
+      <div class="cam-box" id="box-remote" title="Dois cliques para expandir em tela cheia">
+        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera dela">⛶</button>
         <div class="speaking-glow-border" id="glow-remote"></div>
         <div class="avatar-placeholder" id="avatar-remote">
           <img id="avatar-img-remote" src="" alt="Avatar Remoto">
           <span class="avatar-name" id="avatar-name-remote">Esperando ela...</span>
           <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
         </div>
-        <video id="remote-cam" autoplay playsinline muted></video>
+        <video id="remote-cam" autoplay playsinline></video>
         <span class="cam-label" id="label-remote">
           <span id="name-tag-remote">Ela</span>
           <span id="mute-indicator-remote" class="mute-indicator hidden">🔇</span>
         </span>
       </div>
     </div>
-  </div>
+  </main>
 
   <audio id="remote-voice-audio" autoplay playsinline></audio>
 
@@ -114,7 +118,7 @@
     <button id="btn-hangup" class="dock-btn btn-danger" title="Reconectar">📞</button>
   </footer>
 
-  <!-- Modal: Galeria de Metas / Bucket List -->
+  <!-- Modal Metas / Bucket List -->
   <div id="bucket-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 520px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
@@ -123,25 +127,20 @@
       </div>
       <p class="modal-subtitle">Criar planejamentos</p>
 
-      <!-- Criar Nova Categoria -->
       <div style="display:flex; gap:6px; margin-bottom: 12px;">
         <input type="text" id="new-category-input" placeholder="Nova categoria (ex: Viagens, Filmes, Jogos)..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:7px 10px; border-radius:6px; font-size:12px;">
         <button id="btn-add-category" class="btn-sm btn-highlight">+ Criar</button>
       </div>
 
-      <!-- Abas de Categorias Criadas -->
       <div id="bucket-categories-bar" class="bucket-tabs-container"></div>
 
-      <!-- Formulário de Nova Meta -->
       <div style="display:flex; gap:6px; margin: 12px 0 8px 0;">
         <input type="text" id="new-bucket-item-input" placeholder="Adicionar um plano nesta categoria..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px 10px; border-radius:6px; font-size:13px;">
         <button id="btn-add-bucket-item" class="btn-sm btn-highlight">Adicionar</button>
       </div>
 
-      <!-- Lista de Metas -->
       <div id="bucket-items-list" class="bucket-items-list"></div>
 
-      <!-- Rodapé / Progresso -->
       <div class="bucket-footer">
         <span id="bucket-progress-text">0 de 0 concluídos</span>
         <button id="btn-delete-active-category" class="btn-sm btn-cancel" style="color:#ed4245; font-size:11px; padding:4px 8px;" title="Excluir categoria atual">🗑️ Excluir Categoria</button>
@@ -202,13 +201,11 @@
         <input type="date" id="profile-date-input" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px;">
       </div>
 
-      <!-- Ajuste do Tamanho da Câmera -->
       <div class="form-group">
         <label for="cam-size-slider">Tamanho da Câmera: <span id="cam-size-value">680px</span></label>
         <input type="range" id="cam-size-slider" min="300" max="1100" step="20" value="680" style="width: 100%; cursor: pointer;">
       </div>
 
-      <!-- Papel de Parede Personalizado -->
       <div class="form-group">
         <label>Plano de Fundo do Palco:</label>
         <div style="display:flex; gap:8px;">
@@ -219,7 +216,7 @@
       </div>
 
       <div class="form-group">
-        <label>Atalho do Push-to-Mute:</label>
+        <label>Atalho Push-to-Mute Local (Navegador):</label>
         <div style="display:flex; gap:8px; align-items:center;">
           <button id="btn-record-key" class="btn-sm btn-secondary" style="flex:1; justify-content:center;">Gravar Atalho (Atual: Tecla M)</button>
           <button id="btn-reset-key" class="btn-sm btn-cancel" title="Restaurar padrão">↺</button>
@@ -273,7 +270,6 @@
         <select id="audio-output-select" class="device-select"><option value="">Carregando saídas...</option></select>
       </div>
 
-      <!-- Controle de Espelhamento Sincronizado em Tempo Real -->
       <div class="form-group" style="margin-top: 6px;">
         <label>Espelhamento da Minha Imagem:</label>
         <button class="btn-sm btn-secondary" id="btn-toggle-mirror-my-cam" style="width: 100%; justify-content: center;">
@@ -304,7 +300,7 @@
       </div>
 
       <div class="form-group" style="margin-top: 10px;">
-        <label for="screen-audio-select">🔊 Áudio da transmissão:</label>
+        <label for="screen-audio-select">🔊 Áudio da transmissão (VB-Audio ou Sistema):</label>
         <select id="screen-audio-select" class="device-select">
           <option value="">🔇 Sem áudio</option>
         </select>
@@ -318,6 +314,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.0"></script>
 </body>
 </html>

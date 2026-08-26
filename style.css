@@ -147,51 +147,51 @@ header#main-header {
 
 /* Palco Central */
 #stage {
-  flex: 1;
   position: relative;
-  background-color: #0b0c0f;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
   width: 100vw;
   height: 100vh;
   height: 100dvh;
+  background-color: #0b0c0f;
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  display: block;
 }
 
+/* Transmissão do Jogo */
 #main-stream {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
   position: absolute;
   top: 0;
   left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  object-fit: contain;
   z-index: 1;
   background: #000;
   display: block;
 }
 
-#stage.camera-focus-mode #main-stream {
-  display: none !important;
-}
-
-/* Câmeras em Miniatura (Durante Transmissão de Tela) */
+/* Câmeras em Miniatura sobrepostas no Canto Direito */
 .cams-overlay {
-  position: absolute;
-  top: 58px;
-  right: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 100;
+  position: absolute !important;
+  top: 60px !important;
+  right: 16px !important;
+  left: auto !important;
+  bottom: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  z-index: 100 !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
 }
 
 .cam-box {
-  width: clamp(140px, 18vw, 220px);
-  aspect-ratio: 16 / 9;
+  width: 190px !important;
+  max-width: 190px !important;
+  aspect-ratio: 16 / 9 !important;
   background: #14151a;
   border-radius: 10px;
   overflow: hidden;
@@ -201,14 +201,23 @@ header#main-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
-/* Câmeras no Centro (Modo Conversa / Sem Transmissão) */
+/* Modo Conversa (Quando NÃO houver transmissão ativa) */
+#stage.camera-focus-mode #main-stream {
+  display: none !important;
+}
+
 #stage.camera-focus-mode .cams-overlay {
-  position: static !important;
-  width: 100% !important;
-  height: 100% !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  display: flex !important;
   flex-direction: row !important;
   justify-content: center !important;
   align-items: center !important;
@@ -216,9 +225,9 @@ header#main-header {
   padding: 20px 20px 80px 20px !important;
 }
 
-#stage.camera-focus-mode .cam-box {
+#stage.camera-focus-mode .cam-box:not(.fullscreen-focus) {
   width: var(--remote-cam-width, 680px) !important;
-  max-width: 48vw !important;
+  max-width: 46vw !important;
   border-radius: 16px !important;
 }
 
@@ -236,13 +245,27 @@ header#main-header {
   height: 100vh !important;
   height: 100dvh !important;
   max-width: 100% !important;
-  z-index: 850 !important;
+  z-index: 950 !important;
   border-radius: 0 !important;
   border: none !important;
+  background: #000 !important;
 }
 
 .cam-box.fullscreen-focus video {
   object-fit: contain !important;
+}
+
+/* Botão de Fechar Tela Cheia - Posição limpa e visível */
+.cam-box.fullscreen-focus .btn-cam-action {
+  top: 68px !important;
+  right: 18px !important;
+  background: rgba(30, 32, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 16px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.8) !important;
+  z-index: 1000 !important;
 }
 
 .cam-box.cam-hidden { display: none !important; }
@@ -695,6 +718,11 @@ body.pip-active #box-remote { width: 100vw !important; height: 100vh !important;
     font-size: 11px;
   }
 
+  .cam-box.fullscreen-focus .btn-cam-action {
+    top: 58px !important;
+    right: 14px !important;
+  }
+
   .cams-overlay {
     top: 52px !important;
     right: 8px !important;
@@ -724,7 +752,7 @@ body.pip-active #box-remote { width: 100vw !important; height: 100vh !important;
     align-items: center !important;
   }
 
-  #stage.camera-focus-mode .cam-box {
+  #stage.camera-focus-mode .cam-box:not(.fullscreen-focus) {
     width: 100% !important;
     max-width: 90vw !important;
     aspect-ratio: 16 / 9 !important;
