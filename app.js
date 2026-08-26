@@ -28,6 +28,48 @@ const peer = new Peer(myPeerId, {
   }
 });
 
+// CORREÇÃO: reconexão automática da SINALIZAÇÃO do PeerJS.
+// Depois de muito tempo de chamada, o WebSocket de sinalização do PeerJS
+// pode cair sozinho mesmo com a chamada principal (áudio/vídeo) continuando
+// ativa normalmente — porque ela já não depende mais do servidor depois de
+// estabelecida. O problema aparece só quando se tenta abrir uma conexão NOVA
+// (como a transmissão de tela), que PRECISA da sinalização de novo: sem ela,
+// o peer.call() é enviado só localmente e nunca chega no outro lado —
+// resultando na tela preta que só um reload total resolvia antes.
+let isPeerReconnecting = false;
+
+function attemptPeerReconnect(delayMs = 1500) {
+  if (isPeerReconnecting || peer.destroyed) return;
+  isPeerReconnecting = true;
+  setTimeout(() => {
+    isPeerReconnecting = false;
+    if (!peer.destroyed && peer.disconnected) {
+      try {
+        peer.reconnect();
+      } catch (err) {
+        console.warn('Falha ao tentar reconectar peer:', err);
+      }
+    }
+  }, delayMs);
+}
+
+peer.on('disconnected', () => {
+  console.warn('Peer desconectado do servidor de sinalização — tentando reconectar...');
+  if (statusBadge) {
+    statusBadge.innerText = '🔄 Reconectando ao servidor...';
+    statusBadge.classList.remove('connected');
+  }
+  attemptPeerReconnect();
+});
+
+peer.on('error', (err) => {
+  console.error('Erro no Peer:', err && err.type, err);
+  const recoverableTypes = ['network', 'server-error', 'socket-error', 'socket-closed'];
+  if (err && recoverableTypes.includes(err.type)) {
+    attemptPeerReconnect();
+  }
+});
+
 let micStream = null;
 let camStream = null;
 let screenStream = null;
@@ -203,14 +245,7 @@ remoteCam.muted = true;
 remoteVoiceAudio.muted = false;
 mainStream.muted = false;
 
-// 1. ATALHO GLOBAL ELECTRON (Push-to-Mute em jogos como FiveM)
-if (window.electronAPI && window.electronAPI.onGlobalMuteToggle) {
-  window.electronAPI.onGlobalMuteToggle(() => {
-    toggleMicState();
-  });
-}
-
-// 2. CÂMERA REMOTA EM TELA CHEIA (Alternância e botão com ícone dinâmico)
+// 1. CÂMERA REMOTA EM TELA CHEIA (Alternância e botão com ícone dinâmico)
 function toggleRemoteFullscreenCam() {
   const isNowFullscreen = boxRemote.classList.toggle('fullscreen-focus');
   if (btnFullscreenCam) {
@@ -301,7 +336,7 @@ if (btnRestoreSelfCam) {
   });
 }
 
-// 3. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS
+// 2. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS
 function updateLoveCounter() {
   try {
     let dateStr = myProfile.startDate || '2026-07-30';
@@ -590,7 +625,7 @@ if (btnResetBg) {
 const savedBg = localStorage.getItem('app_stage_background');
 if (savedBg && stageEl) stageEl.style.backgroundImage = `url("${savedBg}")`;
 
-// 4. ATALHO PUSH-TO-MUTE COM SUPORTE TOTAL A BOTÕES LATERAIS DE MOUSE
+// 3. ATALHO PUSH-TO-MUTE COM SUPORTE TOTAL A BOTÕES LATERAIS DE MOUSE
 function updateBindingButtonLabel() {
   if (btnRecordKey) {
     btnRecordKey.innerText = `Atalho: ${pushToMuteConfig.label}`;
@@ -714,7 +749,7 @@ function deactivatePushMute() {
   }
 }
 
-// 5. SUBSTITUIÇÃO SEGURA DE TRILHAS
+// 4. SUBSTITUIÇÃO SEGURA DE TRILHAS
 function replaceTrackOnCall(newTrack, kind) {
   if (mainCall && mainCall.peerConnection) {
     const senders = mainCall.peerConnection.getSenders();
@@ -1012,7 +1047,7 @@ function createBlackVideoTrack() {
   return blackTrack;
 }
 
-// 6. CÂMERA (Ciclo de Vida Blindado)
+// 5. CÂMERA (Ciclo de Vida Blindado)
 async function toggleCamera() {
   if (isCamOn) {
     if (camStream) {
@@ -1060,7 +1095,7 @@ cameraSelect.addEventListener('change', () => {
   }
 });
 
-// 7. TRANSMISSÃO DE TELA (Desktop Electron)
+// 6. TRANSMISSÃO DE TELA (Desktop Electron)
 async function toggleScreenShare() {
   if (isScreenSharing) {
     stopScreenSharing();
@@ -1180,7 +1215,7 @@ function stopScreenSharing() {
 btnScreen.addEventListener('click', toggleScreenShare);
 if (btnCloseScreenPicker) btnCloseScreenPicker.addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
-// 8. BLOCO DE NOTAS COM INDICADOR VISUAL (Bolinha Vermelha)
+// 7. BLOCO DE NOTAS COM INDICADOR VISUAL (Bolinha Vermelha)
 function toggleNotes() {
   notesDrawer.classList.toggle('open');
   if (notesDrawer.classList.contains('open')) {
@@ -1245,10 +1280,20 @@ function getMainCallStream() {
   return new MediaStream(tracks);
 }
 
+// CORREÇÃO: se o peer estiver desconectado da sinalização no momento de
+// transmitir tela, dispara a reconexão e tenta de novo em instantes, em vez
+// de simplesmente falhar em silêncio (o que causava a tela preta).
 function sendScreenCall() {
-  if (isScreenSharing && screenStream) {
-    screenCall = peer.call(targetPeerId, screenStream, { metadata: { type: 'screen' } });
+  if (!isScreenSharing || !screenStream) return;
+
+  if (peer.disconnected) {
+    console.warn('Peer desconectado ao tentar transmitir tela — reconectando antes de tentar de novo...');
+    attemptPeerReconnect();
+    setTimeout(sendScreenCall, 2000);
+    return;
   }
+
+  screenCall = peer.call(targetPeerId, screenStream, { metadata: { type: 'screen' } });
 }
 
 function sendDataMessage(data) {
@@ -1306,7 +1351,16 @@ function setupDataConnection(conn) {
   });
 }
 
+// CORREÇÃO: mesma proteção contra sinalização caída ao (re)iniciar a
+// chamada principal — evita ficar tentando indefinidamente sem nunca
+// reconectar a sinalização de verdade.
 function initiateCall() {
+  if (peer.disconnected) {
+    console.warn('Peer desconectado ao iniciar chamada — reconectando antes de tentar de novo...');
+    attemptPeerReconnect();
+    return;
+  }
+
   const activeStream = getMainCallStream();
   if (mainCall) { try { mainCall.close(); } catch(e) {} }
   const conn = peer.connect(targetPeerId);
