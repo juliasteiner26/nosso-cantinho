@@ -29,7 +29,7 @@ function createWindow() {
 
   if (ONLINE_APP_URL.includes('SEU_USUARIO')) {
     mainWindow.loadFile('index.html');
-  } else {
+  } else { 
     mainWindow.loadURL(ONLINE_APP_URL).catch(() => {
       mainWindow.loadFile('index.html');
     });
