@@ -28,14 +28,6 @@ const peer = new Peer(myPeerId, {
   }
 });
 
-// CORREÇÃO: reconexão automática da SINALIZAÇÃO do PeerJS.
-// Depois de muito tempo de chamada, o WebSocket de sinalização do PeerJS
-// pode cair sozinho mesmo com a chamada principal (áudio/vídeo) continuando
-// ativa normalmente — porque ela já não depende mais do servidor depois de
-// estabelecida. O problema aparece só quando se tenta abrir uma conexão NOVA
-// (como a transmissão de tela), que PRECISA da sinalização de novo: sem ela,
-// o peer.call() é enviado só localmente e nunca chega no outro lado —
-// resultando na tela preta que só um reload total resolvia antes.
 let isPeerReconnecting = false;
 
 function attemptPeerReconnect(delayMs = 1500) {
@@ -100,7 +92,7 @@ let audioContext = null;
 let micGateGain = null;
 let micGateInterval = null;
 
-// Atalho Push-to-Mute Local (Navegador com suporte a Mouse Lateral 4 e 5)
+// Atalho Push-to-Mute Local
 let pushToMuteConfig = JSON.parse(localStorage.getItem('push_to_mute_config')) || {
   type: 'keyboard',
   code: 'KeyM',
@@ -245,7 +237,44 @@ remoteCam.muted = true;
 remoteVoiceAudio.muted = false;
 mainStream.muted = false;
 
-// 1. CÂMERA REMOTA EM TELA CHEIA (Alternância e botão com ícone dinâmico)
+// SOM SINTETIZADO ESTILO DISCORD PARA TRANSMISSÃO
+function playStreamNotificationSound(isStarting = true) {
+  try {
+    initAudioAnalyser();
+    const ctx = audioContext;
+    if (!ctx) return;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.12, now);
+
+    if (isStarting) {
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    } else {
+      osc.frequency.setValueAtTime(660, now);
+      osc.frequency.exponentialRampToValueAtTime(330, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    }
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.26);
+  } catch (e) {
+    console.warn('Erro ao emitir som de transmissão:', e);
+  }
+}
+
+// Câmera Remota em Tela Cheia
 function toggleRemoteFullscreenCam() {
   const isNowFullscreen = boxRemote.classList.toggle('fullscreen-focus');
   if (btnFullscreenCam) {
@@ -336,7 +365,7 @@ if (btnRestoreSelfCam) {
   });
 }
 
-// 2. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS
+// Contador de Tempo Juntas
 function updateLoveCounter() {
   try {
     let dateStr = myProfile.startDate || '2026-07-30';
@@ -472,7 +501,7 @@ function setupSpeakingDetector(stream, isLocal) {
   }
 }
 
-// BUCKET LIST LOGIC
+// BUCKET LIST
 function saveAndBroadcastBucket() {
   localStorage.setItem('shared_bucket_list', JSON.stringify(bucketData));
   renderBucketUI();
@@ -625,7 +654,7 @@ if (btnResetBg) {
 const savedBg = localStorage.getItem('app_stage_background');
 if (savedBg && stageEl) stageEl.style.backgroundImage = `url("${savedBg}")`;
 
-// 3. ATALHO PUSH-TO-MUTE COM SUPORTE TOTAL A BOTÕES LATERAIS DE MOUSE
+// Atalho Push-to-Mute Local
 function updateBindingButtonLabel() {
   if (btnRecordKey) {
     btnRecordKey.innerText = `Atalho: ${pushToMuteConfig.label}`;
@@ -749,7 +778,7 @@ function deactivatePushMute() {
   }
 }
 
-// 4. SUBSTITUIÇÃO SEGURA DE TRILHAS
+// Substituição Segura de Trilhas
 function replaceTrackOnCall(newTrack, kind) {
   if (mainCall && mainCall.peerConnection) {
     const senders = mainCall.peerConnection.getSenders();
@@ -828,7 +857,7 @@ function revealControlsTemporarily() {
 window.addEventListener('mousemove', revealControlsTemporarily);
 window.addEventListener('touchstart', revealControlsTemporarily);
 
-// Controle de Tela Cheia Real
+// Tela Cheia
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     if (document.documentElement.requestFullscreen) {
@@ -1047,7 +1076,7 @@ function createBlackVideoTrack() {
   return blackTrack;
 }
 
-// 5. CÂMERA (Ciclo de Vida Blindado)
+// Câmera
 async function toggleCamera() {
   if (isCamOn) {
     if (camStream) {
@@ -1095,7 +1124,7 @@ cameraSelect.addEventListener('change', () => {
   }
 });
 
-// 6. TRANSMISSÃO DE TELA (Desktop Electron)
+// Transmissão de Tela
 async function toggleScreenShare() {
   if (isScreenSharing) {
     stopScreenSharing();
@@ -1171,6 +1200,8 @@ async function startElectronStream(sourceId) {
 
 function handleStreamStart(stream) {
   isScreenSharing = true;
+  playStreamNotificationSound(true);
+
   if (stageEl) stageEl.classList.remove('camera-focus-mode');
 
   const hasAudio = stream.getAudioTracks().length > 0;
@@ -1196,6 +1227,7 @@ function stopScreenSharing() {
     screenStream = null;
   }
   isScreenSharing = false;
+  playStreamNotificationSound(false);
 
   if (stageEl) stageEl.classList.add('camera-focus-mode');
   if (containerScreenVolume) containerScreenVolume.classList.add('hidden');
@@ -1215,7 +1247,7 @@ function stopScreenSharing() {
 btnScreen.addEventListener('click', toggleScreenShare);
 if (btnCloseScreenPicker) btnCloseScreenPicker.addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
-// 7. BLOCO DE NOTAS COM INDICADOR VISUAL (Bolinha Vermelha)
+// Bloco de Notas
 function toggleNotes() {
   notesDrawer.classList.toggle('open');
   if (notesDrawer.classList.contains('open')) {
@@ -1255,7 +1287,7 @@ function toggleSettings() { settingsModal.classList.toggle('active'); }
 btnOpenSettings.addEventListener('click', toggleSettings);
 btnCloseSettings.addEventListener('click', () => settingsModal.classList.remove('active'));
 
-// WebRTC PeerJS Call
+// WebRTC Chamada
 function getMainCallStream() {
   const tracks = [];
   if (micStream && micStream.getAudioTracks().length > 0) {
@@ -1280,9 +1312,6 @@ function getMainCallStream() {
   return new MediaStream(tracks);
 }
 
-// CORREÇÃO: se o peer estiver desconectado da sinalização no momento de
-// transmitir tela, dispara a reconexão e tenta de novo em instantes, em vez
-// de simplesmente falhar em silêncio (o que causava a tela preta).
 function sendScreenCall() {
   if (!isScreenSharing || !screenStream) return;
 
@@ -1325,6 +1354,7 @@ function setupDataConnection(conn) {
       isRemoteCamMirrored = data.isMirrored;
       if (boxRemote) boxRemote.classList.toggle('mirrored', isRemoteCamMirrored);
     } else if (data.type === 'SCREEN_STATE') {
+      playStreamNotificationSound(data.isSharing);
       stageEl.classList.toggle('camera-focus-mode', !data.isSharing);
       if (!data.isSharing) {
         containerScreenVolume.classList.add('hidden');
@@ -1351,9 +1381,6 @@ function setupDataConnection(conn) {
   });
 }
 
-// CORREÇÃO: mesma proteção contra sinalização caída ao (re)iniciar a
-// chamada principal — evita ficar tentando indefinidamente sem nunca
-// reconectar a sinalização de verdade.
 function initiateCall() {
   if (peer.disconnected) {
     console.warn('Peer desconectado ao iniciar chamada — reconectando antes de tentar de novo...');
@@ -1476,7 +1503,7 @@ profileFileInput.addEventListener('change', (e) => {
       const MAX = 200;
       let w = img.width, h = img.height;
       if (w > h && w > MAX) { h *= MAX / w; w = MAX; }
-      else if (h > MAX) { w *= MAX / h; h = MAX; }
+      else if (h > MAX) { h *= MAX / h; h = MAX; }
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       tempAvatarBase64 = canvas.toDataURL('image/jpeg', 0.8);
