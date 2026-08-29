@@ -46,9 +46,9 @@ function attemptPeerReconnect(delayMs = 1500) {
 }
 
 peer.on('disconnected', () => {
-  console.warn('Peer desconectado do servidor de sinalização — tentando reconectar...');
+  console.warn('Peer desconectado da sinalização — reconectando...');
   if (statusBadge) {
-    statusBadge.innerText = '🔄 Reconectando ao servidor...';
+    statusBadge.innerText = '🔄 Reconectando...';
     statusBadge.classList.remove('connected');
   }
   attemptPeerReconnect();
@@ -79,7 +79,6 @@ let isLowGpuMode = false;
 let isPipActive = false;
 let isSelfCamHidden = false;
 
-// Estado de Espelhamento Sincronizado
 let isMyCamMirrored = (localStorage.getItem('mirror_my_camera') === 'true');
 let isRemoteCamMirrored = false;
 
@@ -92,7 +91,6 @@ let audioContext = null;
 let micGateGain = null;
 let micGateInterval = null;
 
-// Atalho Push-to-Mute Local
 let pushToMuteConfig = JSON.parse(localStorage.getItem('push_to_mute_config')) || {
   type: 'keyboard',
   code: 'KeyM',
@@ -117,7 +115,6 @@ let remoteProfile = {
   startDate: myProfile.startDate
 };
 
-// BUCKET LIST DATA
 let defaultBucketData = {
   activeCategory: '🎮 Jogos',
   categories: {
@@ -132,19 +129,32 @@ let defaultBucketData = {
 };
 let bucketData = JSON.parse(localStorage.getItem('shared_bucket_list')) || defaultBucketData;
 
-// Elementos DOM
+// --- ELEMENTOS DO DOM ---
 const stageEl = document.getElementById('stage');
 const statusBadge = document.getElementById('status-badge');
 const localCam = document.getElementById('local-cam');
 const remoteCam = document.getElementById('remote-cam');
 const boxLocal = document.getElementById('box-local');
 const boxRemote = document.getElementById('box-remote');
-const mainStream = document.getElementById('main-stream');
 const remoteVoiceAudio = document.getElementById('remote-voice-audio');
 const containerScreenVolume = document.getElementById('container-screen-volume');
 const volumeHud = document.getElementById('volume-hud');
 const hudIcon = document.getElementById('hud-icon');
 const hudText = document.getElementById('hud-text');
+
+// Telas Compartilhadas Simultâneas
+const screensContainer = document.getElementById('screens-container');
+const boxRemoteScreen = document.getElementById('box-remote-screen');
+const boxLocalScreen = document.getElementById('box-local-screen');
+const remoteScreenVideo = document.getElementById('remote-screen-video');
+const localScreenVideo = document.getElementById('local-screen-video');
+const labelRemoteScreen = document.getElementById('label-remote-screen');
+const btnHideLocalPreview = document.getElementById('btn-hide-local-preview');
+const btnRestoreLocalPreview = document.getElementById('btn-restore-local-preview');
+const btnFocusRemoteScreen = document.getElementById('btn-focus-remote-screen');
+
+let isLocalPreviewHidden = (localStorage.getItem('hide_local_screen_preview') === 'true');
+let activeFocusedBox = null;
 
 const avatarImgLocal = document.getElementById('avatar-img-local');
 const avatarNameLocal = document.getElementById('avatar-name-local');
@@ -167,7 +177,6 @@ const btnScreen = document.getElementById('btn-screen');
 const btnNoiseSuppression = document.getElementById('btn-noise-suppression');
 const btnLowGpu = document.getElementById('btn-low-gpu');
 const btnPipMode = document.getElementById('btn-pip-mode');
-const btnPipRestore = document.getElementById('btn-pip-restore');
 const btnHideSelfCam = document.getElementById('btn-hide-self-cam');
 const btnRestoreSelfCam = document.getElementById('btn-restore-self-cam');
 const btnToggleMirrorMyCam = document.getElementById('btn-toggle-mirror-my-cam');
@@ -235,18 +244,14 @@ if (stageEl) stageEl.classList.add('camera-focus-mode');
 localCam.muted = true;
 remoteCam.muted = true;
 remoteVoiceAudio.muted = false;
-mainStream.muted = false;
 
-// SOM SINTETIZADO ESTILO DISCORD PARA TRANSMISSÃO
+// --- SOM SINTETIZADO ESTILO DISCORD ---
 function playStreamNotificationSound(isStarting = true) {
   try {
     initAudioAnalyser();
     const ctx = audioContext;
     if (!ctx) return;
-
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
+    if (ctx.state === 'suspended') ctx.resume();
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -272,6 +277,88 @@ function playStreamNotificationSound(isStarting = true) {
   } catch (e) {
     console.warn('Erro ao emitir som de transmissão:', e);
   }
+}
+
+// --- CONTROLE DE TELAS SIMULTÂNEAS ---
+function updateScreensLayout() {
+  const isLocalActive = isScreenSharing && screenStream;
+  const isRemoteActive = remoteScreenVideo && remoteScreenVideo.srcObject !== null;
+
+  boxLocalScreen.classList.toggle('hidden', !isLocalActive || isLocalPreviewHidden);
+  btnRestoreLocalPreview.classList.toggle('hidden', !isLocalActive || !isLocalPreviewHidden);
+
+  boxRemoteScreen.classList.toggle('hidden', !isRemoteActive);
+
+  if (labelRemoteScreen) {
+    labelRemoteScreen.innerText = `🖥️ Tela de ${remoteProfile.name}`;
+  }
+
+  const hasAnyScreen = isLocalActive || isRemoteActive;
+  screensContainer.classList.toggle('hidden', !hasAnyScreen);
+  stageEl.classList.toggle('camera-focus-mode', !hasAnyScreen);
+
+  updateAutohideState();
+}
+
+if (btnHideLocalPreview) {
+  btnHideLocalPreview.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isLocalPreviewHidden = true;
+    localStorage.setItem('hide_local_screen_preview', 'true');
+    updateScreensLayout();
+  });
+}
+
+if (btnRestoreLocalPreview) {
+  btnRestoreLocalPreview.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isLocalPreviewHidden = false;
+    localStorage.setItem('hide_local_screen_preview', 'false');
+    updateScreensLayout();
+  });
+}
+
+function toggleScreenFocus(targetBox) {
+  if (activeFocusedBox === targetBox) {
+    boxRemoteScreen.classList.remove('focused', 'hidden-by-focus');
+    boxLocalScreen.classList.remove('focused', 'hidden-by-focus');
+    activeFocusedBox = null;
+    if (btnFocusRemoteScreen) btnFocusRemoteScreen.innerText = '⛶';
+  } else {
+    activeFocusedBox = targetBox;
+    const otherBox = (targetBox === boxRemoteScreen) ? boxLocalScreen : boxRemoteScreen;
+
+    targetBox.classList.add('focused');
+    targetBox.classList.remove('hidden-by-focus');
+
+    otherBox.classList.remove('focused');
+    otherBox.classList.add('hidden-by-focus');
+
+    if (btnFocusRemoteScreen && targetBox === boxRemoteScreen) {
+      btnFocusRemoteScreen.innerText = '✕';
+    }
+  }
+}
+
+if (boxRemoteScreen) {
+  boxRemoteScreen.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.btn-screen-action')) return;
+    toggleScreenFocus(boxRemoteScreen);
+  });
+}
+
+if (boxLocalScreen) {
+  boxLocalScreen.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.btn-screen-action')) return;
+    toggleScreenFocus(boxLocalScreen);
+  });
+}
+
+if (btnFocusRemoteScreen) {
+  btnFocusRemoteScreen.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleScreenFocus(boxRemoteScreen);
+  });
 }
 
 // Câmera Remota em Tela Cheia
@@ -322,7 +409,7 @@ if (btnToggleMirrorMyCam) {
 
 function unlockMediaAudio() {
   if (remoteVoiceAudio && remoteVoiceAudio.srcObject) remoteVoiceAudio.play().catch(() => {});
-  if (mainStream && mainStream.srcObject) mainStream.play().catch(() => {});
+  if (remoteScreenVideo && remoteScreenVideo.srcObject) remoteScreenVideo.play().catch(() => {});
   if (audioContext && audioContext.state === 'suspended') audioContext.resume();
 }
 window.addEventListener('click', unlockMediaAudio);
@@ -342,7 +429,6 @@ function updateProfileUI() {
 }
 updateProfileUI();
 
-// Ocultar e Restaurar Própria Câmera
 function toggleSelfCamVisibility(hide) {
   isSelfCamHidden = hide;
   boxLocal.classList.toggle('cam-hidden', isSelfCamHidden);
@@ -807,7 +893,7 @@ function updateRemoteMicVolume(val) {
 
 function updateRemoteScreenVolume(val) {
   screenVolumeMultiplier = Math.max(0, Math.min(2.0, val));
-  mainStream.volume = Math.min(screenVolumeMultiplier, 1.0);
+  remoteScreenVideo.volume = Math.min(screenVolumeMultiplier, 1.0);
   if (screenVolSlider) screenVolSlider.value = screenVolumeMultiplier;
   if (screenVolValueDisplay) screenVolValueDisplay.innerText = `${Math.round(screenVolumeMultiplier * 100)}%`;
 }
@@ -822,7 +908,7 @@ boxRemote.addEventListener('wheel', (e) => {
   showVolumeHUD('🎙️', micVolumeMultiplier);
 });
 
-mainStream.addEventListener('wheel', (e) => {
+remoteScreenVideo.addEventListener('wheel', (e) => {
   e.preventDefault();
   const nextVal = screenVolumeMultiplier + (e.deltaY < 0 ? 0.05 : -0.05);
   updateRemoteScreenVolume(nextVal);
@@ -831,7 +917,7 @@ mainStream.addEventListener('wheel', (e) => {
 
 // Ocultação Automática
 function updateAutohideState() {
-  const isStreamingActive = isScreenSharing || (mainStream.srcObject !== null);
+  const isStreamingActive = isScreenSharing || (remoteScreenVideo.srcObject !== null);
   const isFs = !!document.fullscreenElement;
   const shouldAutohide = isStreamingActive || isFs;
 
@@ -883,12 +969,7 @@ if (btnFullscreen) {
 }
 
 stageEl.addEventListener('dblclick', (e) => {
-  if (e.target.closest('.cam-box') || e.target.closest('.btn-cam-action') || e.target.closest('.restore-cam-tab')) return;
-  toggleFullscreen();
-});
-
-mainStream.addEventListener('dblclick', (e) => {
-  e.stopPropagation();
+  if (e.target.closest('.cam-box') || e.target.closest('.screen-box') || e.target.closest('.btn-cam-action') || e.target.closest('.restore-cam-tab')) return;
   toggleFullscreen();
 });
 
@@ -912,7 +993,6 @@ function togglePiP() {
   }
 }
 btnPipMode.addEventListener('click', togglePiP);
-if (btnPipRestore) btnPipRestore.addEventListener('click', togglePiP);
 
 // Dispositivos
 async function loadDevices() {
@@ -1202,21 +1282,16 @@ function handleStreamStart(stream) {
   isScreenSharing = true;
   playStreamNotificationSound(true);
 
-  if (stageEl) stageEl.classList.remove('camera-focus-mode');
-
-  const hasAudio = stream.getAudioTracks().length > 0;
-  if (containerScreenVolume) containerScreenVolume.classList.toggle('hidden', !hasAudio);
-
-  mainStream.srcObject = stream;
-  mainStream.muted = true;
-  mainStream.play().catch(() => {});
+  localScreenVideo.srcObject = stream;
+  localScreenVideo.muted = true;
+  localScreenVideo.play().catch(() => {});
 
   btnScreen.classList.add('btn-danger');
   btnScreen.classList.remove('btn-highlight');
 
   sendDataMessage({ type: 'SCREEN_STATE', isSharing: true });
   sendScreenCall();
-  updateAutohideState();
+  updateScreensLayout();
 
   stream.getVideoTracks()[0].onended = () => { stopScreenSharing(); };
 }
@@ -1229,10 +1304,7 @@ function stopScreenSharing() {
   isScreenSharing = false;
   playStreamNotificationSound(false);
 
-  if (stageEl) stageEl.classList.add('camera-focus-mode');
-  if (containerScreenVolume) containerScreenVolume.classList.add('hidden');
-  mainStream.srcObject = null;
-
+  localScreenVideo.srcObject = null;
   btnScreen.classList.remove('btn-danger');
   btnScreen.classList.add('btn-highlight');
 
@@ -1241,7 +1313,11 @@ function stopScreenSharing() {
     try { screenCall.close(); } catch(e) {}
     screenCall = null;
   }
-  updateAutohideState();
+
+  if (activeFocusedBox === boxLocalScreen) {
+    toggleScreenFocus(boxLocalScreen);
+  }
+  updateScreensLayout();
 }
 
 btnScreen.addEventListener('click', toggleScreenShare);
@@ -1287,7 +1363,7 @@ function toggleSettings() { settingsModal.classList.toggle('active'); }
 btnOpenSettings.addEventListener('click', toggleSettings);
 btnCloseSettings.addEventListener('click', () => settingsModal.classList.remove('active'));
 
-// WebRTC Chamada
+// WebRTC Chamadas
 function getMainCallStream() {
   const tracks = [];
   if (micStream && micStream.getAudioTracks().length > 0) {
@@ -1316,7 +1392,7 @@ function sendScreenCall() {
   if (!isScreenSharing || !screenStream) return;
 
   if (peer.disconnected) {
-    console.warn('Peer desconectado ao tentar transmitir tela — reconectando antes de tentar de novo...');
+    console.warn('Peer desconectado ao transmitir tela — reconectando...');
     attemptPeerReconnect();
     setTimeout(sendScreenCall, 2000);
     return;
@@ -1355,12 +1431,14 @@ function setupDataConnection(conn) {
       if (boxRemote) boxRemote.classList.toggle('mirrored', isRemoteCamMirrored);
     } else if (data.type === 'SCREEN_STATE') {
       playStreamNotificationSound(data.isSharing);
-      stageEl.classList.toggle('camera-focus-mode', !data.isSharing);
       if (!data.isSharing) {
-        containerScreenVolume.classList.add('hidden');
-        mainStream.srcObject = null;
+        if (containerScreenVolume) containerScreenVolume.classList.add('hidden');
+        remoteScreenVideo.srcObject = null;
+        if (activeFocusedBox === boxRemoteScreen) {
+          toggleScreenFocus(boxRemoteScreen);
+        }
       }
-      updateAutohideState();
+      updateScreensLayout();
     } else if (data.type === 'NOTES_UPDATE') {
       sharedNotesArea.value = data.text;
       localStorage.setItem('shared_notes_content', data.text);
@@ -1383,7 +1461,7 @@ function setupDataConnection(conn) {
 
 function initiateCall() {
   if (peer.disconnected) {
-    console.warn('Peer desconectado ao iniciar chamada — reconectando antes de tentar de novo...');
+    console.warn('Peer desconectado ao iniciar chamada — reconectando...');
     attemptPeerReconnect();
     return;
   }
@@ -1415,14 +1493,15 @@ peer.on('call', call => {
   if (call.metadata && call.metadata.type === 'screen') {
     call.answer();
     call.on('stream', stream => {
-      if (stageEl) stageEl.classList.remove('camera-focus-mode');
-      mainStream.srcObject = stream;
-      mainStream.muted = false;
-      mainStream.volume = Math.min(screenVolumeMultiplier, 1.0);
-      mainStream.play().catch(() => {});
+      remoteScreenVideo.srcObject = stream;
+      remoteScreenVideo.muted = false;
+      remoteScreenVideo.volume = Math.min(screenVolumeMultiplier, 1.0);
+      remoteScreenVideo.play().catch(() => {});
+
       const hasAudio = stream.getAudioTracks().length > 0;
       if (containerScreenVolume) containerScreenVolume.classList.toggle('hidden', !hasAudio);
-      updateAutohideState();
+
+      updateScreensLayout();
     });
   } else {
     if (connectTimer) clearInterval(connectTimer);

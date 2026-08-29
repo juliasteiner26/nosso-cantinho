@@ -2,318 +2,299 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nosso Cantinho</title>
-  <link rel="stylesheet" href="style.css?v=2.0">
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <!-- Botão Flutuante de Restaurar PiP -->
-  <button id="btn-pip-restore" title="Restaurar tamanho normal">✕</button>
-
-  <!-- Botão Flutuante para Restaurar Própria Câmera Oculta -->
-  <button id="btn-restore-self-cam" class="restore-cam-tab hidden" title="Mostrar minha câmera novamente">
-    👁️ Mostrar Você
-  </button>
-
   <!-- Barra Superior -->
-  <header id="main-header">
-    <div class="header-left">
-      <div class="love-counter-badge" id="love-badge" title="Passar o mouse para ver detalhes">
-        <span id="love-days-display">💖 Carregando...</span>
-        <div class="love-tooltip" id="love-tooltip">
-          <h4 id="tooltip-title">Nosso Tempo</h4>
-          <p id="tooltip-full-time">Carregando marcos...</p>
-          <hr>
-          <p id="tooltip-next-event">Próximo marco especial</p>
-        </div>
-      </div>
-
-      <span id="status-badge" class="badge">Aguardando...</span>
+  <header class="top-bar">
+    <div class="top-left">
+      <div id="status-badge" class="status-badge">Conectando...</div>
+      <div id="call-timer" class="call-timer">⏱️ 00:00:00</div>
     </div>
 
-    <!-- Barra de Ações Rápidas -->
-    <div class="header-right">
-      <button class="btn-icon" id="btn-open-bucket" title="Nossas Metas & Planos">📋</button>
-      <button class="btn-icon badge-wrapper" id="btn-open-notes" title="Bloco de Notas">
+    <div class="top-center">
+      <div class="love-badge-container">
+        <span id="love-days-display" class="love-badge">💖 Carregando dias...</span>
+        <div class="love-tooltip">
+          <p id="tooltip-full-time"></p>
+          <p id="tooltip-next-event"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="top-right">
+      <select id="role-select" class="select-clean" title="Alternar perfil nesta máquina">
+        <option value="host">Perfil: Mozin dela</option>
+        <option value="guest">Perfil: Lobinha</option>
+      </select>
+      <button id="btn-open-bucket" class="btn-icon" title="Nossos Planos (Bucket List)">📋</button>
+      <button id="btn-open-roulette" class="btn-icon" title="Sorteador / Roleta">🎲</button>
+      <button id="btn-open-notes" class="btn-icon" title="Anotações Compartilhadas">
         📝
-        <span class="unread-dot hidden" id="notes-unread-dot"></span>
+        <span id="notes-unread-dot" class="unread-dot hidden"></span>
       </button>
-      <button class="btn-icon" id="btn-open-roulette" title="Sorteador de Decisões">🎲</button>
-      <button class="btn-icon" id="btn-open-profile" title="Perfil & Personalização">👤</button>
-      <button class="btn-icon" id="btn-open-settings" title="Dispositivos & Áudio">⚙️</button>
+      <button id="btn-open-profile" class="btn-icon" title="Meu Perfil">👤</button>
+      <button id="btn-open-settings" class="btn-icon" title="Configurações">⚙️</button>
     </div>
   </header>
 
-  <!-- Palco Central -->
-  <main id="stage" class="camera-focus-mode">
-    <video id="main-stream" autoplay playsinline></video>
+  <!-- Palco Principal -->
+  <main id="stage" class="stage-container camera-focus-mode">
+    
+    <!-- Grade de Transmissões de Tela -->
+    <div id="screens-container" class="screens-grid hidden">
+      <!-- Transmissão Dela -->
+      <div id="box-remote-screen" class="screen-box hidden" title="Duplo clique para focar">
+        <div class="screen-header">
+          <span class="screen-label" id="label-remote-screen">🖥️ Tela Dela</span>
+          <button id="btn-focus-remote-screen" class="btn-screen-action" title="Expandir tela dela">⛶</button>
+        </div>
+        <video id="remote-screen-video" autoplay playsinline></video>
+      </div>
 
-    <!-- Indicador HUD de Volume -->
+      <!-- Sua Transmissão Local (Preview) -->
+      <div id="box-local-screen" class="screen-box hidden" title="Duplo clique para focar">
+        <div class="screen-header">
+          <span class="screen-label">🖥️ Sua Tela (Transmitindo)</span>
+          <button id="btn-hide-local-preview" class="btn-screen-action" title="Ocultar seu preview">👁️</button>
+        </div>
+        <video id="local-screen-video" autoplay playsinline muted></video>
+      </div>
+
+      <!-- Botão flutuante para restaurar o preview se estiver oculto -->
+      <button id="btn-restore-local-preview" class="btn-restore-preview hidden">
+        🖥️ Mostrar meu preview
+      </button>
+    </div>
+
+    <!-- Área de Câmeras -->
+    <div class="cameras-wrapper">
+      <!-- Câmera Remota (Dela) -->
+      <div id="box-remote" class="cam-box">
+        <div class="avatar-placeholder">
+          <img id="avatar-img-remote" src="" alt="Avatar">
+          <span id="avatar-name-remote" class="avatar-name"></span>
+          <span id="avatar-status-remote" class="avatar-status"></span>
+        </div>
+        <video id="remote-cam" autoplay playsinline></video>
+        <div class="cam-overlay">
+          <span id="name-tag-remote" class="name-tag"></span>
+          <span id="mute-indicator-remote" class="mute-tag hidden">🔇 Mutada</span>
+          <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera dela">⛶</button>
+        </div>
+      </div>
+
+      <!-- Câmera Local (Você) -->
+      <div id="box-local" class="cam-box">
+        <div class="avatar-placeholder">
+          <img id="avatar-img-local" src="" alt="Avatar">
+          <span id="avatar-name-local" class="avatar-name"></span>
+          <span id="avatar-status-local" class="avatar-status"></span>
+        </div>
+        <video id="local-cam" autoplay playsinline muted></video>
+        <div class="cam-overlay">
+          <span id="name-tag-local" class="name-tag"></span>
+          <span id="mute-indicator-local" class="mute-tag hidden">🔇 Mutado</span>
+          <button id="btn-hide-self-cam" class="btn-cam-action" title="Ocultar minha câmera">👁️</button>
+        </div>
+      </div>
+
+      <!-- Aba para reabrir sua câmera se estiver oculta -->
+      <button id="btn-restore-self-cam" class="restore-cam-tab hidden">
+        📷 Mostrar minha câmera
+      </button>
+    </div>
+
+    <!-- Elementos de Áudio -->
+    <audio id="remote-voice-audio" autoplay></audio>
+
+    <!-- HUD de Volume no Scroll -->
     <div id="volume-hud" class="volume-hud">
       <span id="hud-icon">🎙️</span>
       <span id="hud-text">100%</span>
     </div>
-
-    <div class="cams-overlay">
-      <!-- Box Local -->
-      <div class="cam-box" id="box-local">
-        <button id="btn-hide-self-cam" class="btn-cam-action" title="Esconder minha câmera da minha tela">👁️</button>
-        <div class="speaking-glow-border" id="glow-local"></div>
-        <div class="avatar-placeholder" id="avatar-local">
-          <img id="avatar-img-local" src="" alt="Avatar Local">
-          <span class="avatar-name" id="avatar-name-local">Você</span>
-          <span class="avatar-status" id="avatar-status-local">Disponível</span>
-        </div>
-        <video id="local-cam" autoplay playsinline muted></video>
-        <span class="cam-label" id="label-local">
-          <span id="name-tag-local">Você</span>
-          <span id="mute-indicator-local" class="mute-indicator hidden">🔇</span>
-        </span>
-      </div>
-
-      <!-- Box Remoto -->
-      <div class="cam-box" id="box-remote" title="Dois cliques para expandir em tela cheia">
-        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera dela">⛶</button>
-        <div class="speaking-glow-border" id="glow-remote"></div>
-        <div class="avatar-placeholder" id="avatar-remote">
-          <img id="avatar-img-remote" src="" alt="Avatar Remoto">
-          <span class="avatar-name" id="avatar-name-remote">Esperando ela...</span>
-          <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
-        </div>
-        <video id="remote-cam" autoplay playsinline></video>
-        <span class="cam-label" id="label-remote">
-          <span id="name-tag-remote">Ela</span>
-          <span id="mute-indicator-remote" class="mute-indicator hidden">🔇</span>
-        </span>
-      </div>
-    </div>
   </main>
 
-  <audio id="remote-voice-audio" autoplay playsinline></audio>
-
-  <!-- Barra Inferior Flutuante (Dock) -->
-  <footer id="main-footer">
-    <button id="btn-toggle-mic" class="dock-btn" title="Mutar/Desmutar Microfone">🎤</button>
-    <button id="btn-toggle-cam" class="dock-btn" title="Ligar/Desligar Câmera">📷</button>
-    <button id="btn-screen" class="dock-btn btn-highlight" title="Transmitir Tela">🖥️</button>
-
-    <div class="volume-container" id="container-mic-volume" title="Volume da voz dela">
-      <span class="vol-icon" id="mic-vol-icon">🎙️</span>
-      <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1">
-      <span id="mic-vol-value">100%</span>
+  <!-- Barra de Controles Inferior -->
+  <footer class="bottom-bar">
+    <div class="controls-group">
+      <button id="btn-toggle-mic" class="btn-control" title="Ligar/Desligar Microfone">🎤</button>
+      <button id="btn-toggle-cam" class="btn-control" title="Ligar/Desligar Câmera">📷</button>
+      <button id="btn-screen" class="btn-control btn-highlight" title="Transmitir Tela">🖥️ Transmitir</button>
+      <button id="btn-fullscreen" class="btn-control" title="Tela Cheia">⛶</button>
+      <button id="btn-pip-mode" class="btn-control" title="Modo PiP (Miniatura)">🗗</button>
+      <button id="btn-hangup" class="btn-control btn-danger" title="Reiniciar Chamada">📞</button>
     </div>
-
-    <div class="volume-container hidden" id="container-screen-volume" title="Volume da transmissão">
-      <span class="vol-icon" id="screen-vol-icon">🖥️</span>
-      <input type="range" id="remote-screen-volume" min="0" max="2" step="0.05" value="1">
-      <span id="screen-vol-value">100%</span>
-    </div>
-
-    <div class="call-timer-badge" id="call-timer">⏱️ 00:00:00</div>
-
-    <button id="btn-pip-mode" class="dock-btn" title="Sobrepor sobre jogos">🗗</button>
-    <button id="btn-fullscreen" class="dock-btn" title="Tela Cheia">⛶</button>
-    <button id="btn-hangup" class="dock-btn btn-danger" title="Reconectar">📞</button>
   </footer>
 
-  <!-- Modal Metas / Bucket List -->
-  <div id="bucket-modal" class="modal-backdrop">
-    <div class="modal-content" style="max-width: 520px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-        <h3>📋 Nossas Metas & Planos</h3>
-        <button id="btn-close-bucket-top" class="btn-sm btn-cancel" style="padding: 4px 8px;">✕</button>
+  <!-- Modal Seletor de Tela -->
+  <div id="screen-picker-modal" class="modal-backdrop">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3>Compartilhar Tela ou Janela</h3>
+        <button id="btn-close-screen-picker" class="btn-close-modal">✕</button>
       </div>
-      <p class="modal-subtitle">Criar planejamentos</p>
-
-      <div style="display:flex; gap:6px; margin-bottom: 12px;">
-        <input type="text" id="new-category-input" placeholder="Nova categoria (ex: Viagens, Filmes, Jogos)..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:7px 10px; border-radius:6px; font-size:12px;">
-        <button id="btn-add-category" class="btn-sm btn-highlight">+ Criar</button>
+      <div class="stream-settings-bar">
+        <label>Qualidade:
+          <select id="stream-quality-select" class="select-clean">
+            <option value="1080p60">1080p (60 FPS - Fluido)</option>
+            <option value="720p30">720p (30 FPS - Econômico)</option>
+          </select>
+        </label>
+        <label>Áudio da Transmissão:
+          <select id="screen-audio-select" class="select-clean">
+            <option value="">🔇 Sem áudio</option>
+          </select>
+        </label>
       </div>
-
-      <div id="bucket-categories-bar" class="bucket-tabs-container"></div>
-
-      <div style="display:flex; gap:6px; margin: 12px 0 8px 0;">
-        <input type="text" id="new-bucket-item-input" placeholder="Adicionar um plano nesta categoria..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px 10px; border-radius:6px; font-size:13px;">
-        <button id="btn-add-bucket-item" class="btn-sm btn-highlight">Adicionar</button>
-      </div>
-
-      <div id="bucket-items-list" class="bucket-items-list"></div>
-
-      <div class="bucket-footer">
-        <span id="bucket-progress-text">0 de 0 concluídos</span>
-        <button id="btn-delete-active-category" class="btn-sm btn-cancel" style="color:#ed4245; font-size:11px; padding:4px 8px;" title="Excluir categoria atual">🗑️ Excluir Categoria</button>
-      </div>
+      <div id="screen-sources-list" class="sources-grid"></div>
     </div>
   </div>
 
-  <!-- Gaveta Lateral: Bloco de Notas -->
+  <!-- Gaveta de Anotações -->
   <aside id="notes-drawer" class="notes-drawer">
     <div class="drawer-header">
-      <h3>📝 Nosso Bloco de Notas</h3>
-      <button id="btn-close-notes" class="btn-sm btn-cancel">✕</button>
+      <h3>📝 Bloco Compartilhado</h3>
+      <button id="btn-close-notes" class="btn-close-modal">✕</button>
     </div>
     <div class="drawer-body">
-      <textarea id="shared-notes-area" placeholder="Digite recadinhos ou lembretes aqui... Sincroniza em tempo real!"></textarea>
-      <span class="sync-status" id="notes-sync-status">🟢 Sincronizado</span>
+      <textarea id="shared-notes-area" placeholder="Escreva algo aqui... sincroniza em tempo real!"></textarea>
+      <span id="notes-sync-status" class="sync-status">🟢 Sincronizado</span>
     </div>
   </aside>
 
-  <!-- Modal: Sorteador de Decisões -->
+  <!-- Modal Roleta / Sorteador -->
   <div id="roulette-modal" class="modal-backdrop">
-    <div class="modal-content">
-      <h3>🎲 Sorteador de Decisões</h3>
-      <p class="modal-subtitle">Decidir o que fazer juntas</p>
-      
-      <div class="form-group">
-        <label>Opções:</label>
-        <textarea id="roulette-options-input" rows="4" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px; resize:none;">GTA RP&#10;Assistir Série&#10;Jogar Minecraft&#10;Palia</textarea>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>🎲 Sorteador do Casal</h3>
+        <button id="btn-close-roulette" class="btn-close-modal">✕</button>
       </div>
-
-      <div class="roulette-result" id="roulette-result-display">🎯 Clique em Sortear</div>
-
-      <div class="modal-actions">
-        <button id="btn-spin-roulette" class="btn-sm btn-highlight">🎰 Sortear Agora</button>
-        <button id="btn-close-roulette" class="btn-sm btn-cancel">Fechar</button>
+      <div class="modal-body">
+        <p class="modal-desc">Coloque uma opção por linha (filmes, jogos, comidas):</p>
+        <textarea id="roulette-options-input" rows="5" class="input-area" placeholder="Minecraft&#10;Palia&#10;Filme de Terror&#10;Pedir Pizza"></textarea>
+        <button id="btn-spin-roulette" class="btn-primary">Sortear Agora!</button>
+        <div id="roulette-result-display" class="roulette-result"></div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Perfil, Status e Personalização -->
-  <div id="profile-modal" class="modal-backdrop">
-    <div class="modal-content">
-      <h3>👤 Perfil & Personalização</h3>
-      <p class="modal-subtitle">Personalize suas informações e visual na chamada</p>
-
-      <div class="form-group">
-        <label for="profile-name-input">Seu Nome / Apelido:</label>
-        <input type="text" id="profile-name-input" maxlength="25">
+  <!-- Modal Bucket List -->
+  <div id="bucket-modal" class="modal-backdrop">
+    <div class="modal-box modal-large">
+      <div class="modal-header">
+        <h3>📋 Nossos Planos & Metas</h3>
+        <button id="btn-close-bucket-top" class="btn-close-modal">✕</button>
       </div>
-
-      <div class="form-group">
-        <label for="profile-status-input">Seu Status Atual:</label>
-        <input type="text" id="profile-status-input" placeholder="Ex: 🎮 Focada no game, ☕ Café..." maxlength="40">
-      </div>
-
-      <div class="form-group">
-        <label for="profile-date-input">Data do Nosso Início:</label>
-        <input type="date" id="profile-date-input" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px;">
-      </div>
-
-      <div class="form-group">
-        <label for="cam-size-slider">Tamanho da Câmera: <span id="cam-size-value">680px</span></label>
-        <input type="range" id="cam-size-slider" min="300" max="1100" step="20" value="680" style="width: 100%; cursor: pointer;">
-      </div>
-
-      <div class="form-group">
-        <label>Plano de Fundo do Palco:</label>
-        <div style="display:flex; gap:8px;">
-          <label for="bg-file-input" class="btn-sm btn-upload" style="flex:1; justify-content:center; cursor:pointer;">🖼️ Escolher Papel de Parede</label>
-          <input type="file" id="bg-file-input" accept="image/*" style="display: none;">
-          <button id="btn-reset-bg" class="btn-sm btn-cancel" title="Restaurar fundo padrão">↺</button>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Atalho Push-to-Mute Local (Navegador):</label>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button id="btn-record-key" class="btn-sm btn-secondary" style="flex:1; justify-content:center;">Gravar Atalho (Atual: Tecla M)</button>
-          <button id="btn-reset-key" class="btn-sm btn-cancel" title="Restaurar padrão">↺</button>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Foto de Perfil:</label>
-        <div class="avatar-preview-wrapper">
-          <img id="profile-preview-img" src="" alt="Prévia">
-          <div class="avatar-upload-btns">
-            <label for="profile-file-input" class="btn-sm btn-upload">📁 Escolher Foto</label>
-            <input type="file" id="profile-file-input" accept="image/*" style="display: none;">
+      <div class="modal-body">
+        <div class="bucket-categories-header">
+          <div id="bucket-categories-bar" class="bucket-tabs"></div>
+          <div class="add-cat-row">
+            <input type="text" id="new-category-input" class="input-clean" placeholder="Nova categoria...">
+            <button id="btn-add-category" class="btn-secondary">Adicionar</button>
+            <button id="btn-delete-active-category" class="btn-danger-clean" title="Excluir categoria atual">🗑️</button>
           </div>
         </div>
-      </div>
-
-      <div class="modal-actions">
-        <button id="btn-save-profile" class="btn-sm btn-highlight">Salvar</button>
-        <button id="btn-close-profile" class="btn-sm btn-cancel">Fechar</button>
+        <div class="bucket-add-row">
+          <input type="text" id="new-bucket-item-input" class="input-clean" placeholder="Adicionar novo plano...">
+          <button id="btn-add-bucket-item" class="btn-primary">Adicionar Item</button>
+        </div>
+        <div id="bucket-items-list" class="bucket-items-container"></div>
+        <div id="bucket-progress-text" class="bucket-progress"></div>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Configurações Técnicas & Câmera Espelhada -->
+  <!-- Modal Perfil -->
+  <div id="profile-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>👤 Editar Perfil</h3>
+        <button id="btn-close-profile" class="btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body form-grid">
+        <div class="avatar-edit-box">
+          <img id="profile-preview-img" src="" alt="Preview">
+          <label class="btn-secondary file-label">
+            Escolher Foto
+            <input type="file" id="profile-file-input" accept="image/*" hidden>
+          </label>
+        </div>
+        <label>Seu Apelido:
+          <input type="text" id="profile-name-input" class="input-clean">
+        </label>
+        <label>Status / Recado:
+          <input type="text" id="profile-status-input" class="input-clean" placeholder="Ex: 🎮 Jogando">
+        </label>
+        <label>Data de Início (AAAA-MM-DD):
+          <input type="date" id="profile-date-input" class="input-clean">
+        </label>
+        
+        <hr class="divider">
+        <h4>Atalho Push-to-Mute (Segurar para Mutar)</h4>
+        <div class="binding-row">
+          <button id="btn-record-key" class="btn-secondary">Atalho: Tecla M</button>
+          <button id="btn-reset-key" class="btn-danger-clean" title="Restaurar padrão">Resetar</button>
+        </div>
+
+        <button id="btn-save-profile" class="btn-primary mt-10">Salvar Alterações</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Configurações -->
   <div id="settings-modal" class="modal-backdrop">
-    <div class="modal-content">
-      <h3>⚙️ Configurações de Dispositivos</h3>
-      <p class="modal-subtitle">Escolha seus equipamentos e preferências de vídeo</p>
-
-      <div class="form-group">
-        <label>Papel na Conexão:</label>
-        <select id="role-select" class="device-select">
-          <option value="host">👑 Mozin dela</option>
-          <option value="guest">🐺 Lobinha</option>
-        </select>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>⚙️ Configurações & Dispositivos</h3>
+        <button id="btn-close-settings" class="btn-close-modal">✕</button>
       </div>
+      <div class="modal-body form-grid">
+        <label>Microfone:
+          <select id="mic-select" class="select-clean"></select>
+        </label>
+        <label>Câmera:
+          <select id="camera-select" class="select-clean"></select>
+        </label>
+        <label>Saída de Som:
+          <select id="audio-output-select" class="select-clean"></select>
+        </label>
 
-      <div class="form-group">
-        <label>Microfone:</label>
-        <select id="mic-select" class="device-select"><option value="">Carregando microfones...</option></select>
-      </div>
+        <div class="settings-toggle-row">
+          <button id="btn-noise-suppression" class="btn-toggle btn-toggle-on">✨ Supressão de Ruído: ON</button>
+          <button id="btn-low-gpu" class="btn-toggle">⚡ Modo Leve: OFF</button>
+          <button id="btn-toggle-mirror-my-cam" class="btn-toggle">🪞 Espelhar Minha Câmera: Desativado</button>
+        </div>
 
-      <div class="form-group">
-        <label>Câmera:</label>
-        <select id="camera-select" class="device-select"><option value="">Carregando câmeras...</option></select>
-      </div>
+        <label>Volume da Voz Dela:
+          <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1">
+          <span id="mic-vol-value">100%</span>
+        </label>
 
-      <div class="form-group">
-        <label>Saída / Fone:</label>
-        <select id="audio-output-select" class="device-select"><option value="">Carregando saídas...</option></select>
-      </div>
+        <div id="container-screen-volume" class="hidden">
+          <label>Volume da Tela Dela:
+            <input type="range" id="remote-screen-volume" min="0" max="2" step="0.05" value="1">
+            <span id="screen-vol-value">100%</span>
+          </label>
+        </div>
 
-      <div class="form-group" style="margin-top: 6px;">
-        <label>Espelhamento da Minha Imagem:</label>
-        <button class="btn-sm btn-secondary" id="btn-toggle-mirror-my-cam" style="width: 100%; justify-content: center;">
-          🪞 Espelhar Minha Câmera: Desativado
-        </button>
-      </div>
+        <label>Largura das Câmeras:
+          <input type="range" id="cam-size-slider" min="320" max="900" step="20" value="680">
+          <span id="cam-size-value">680px</span>
+        </label>
 
-      <div style="display:flex; gap:8px; margin-top: 10px;">
-        <button class="btn-sm btn-toggle-on" id="btn-noise-suppression" style="flex:1;">✨ Supressão: ON</button>
-        <button class="btn-sm btn-secondary" id="btn-low-gpu" style="flex:1;">⚡ Modo Leve: OFF</button>
-      </div>
-
-      <div class="modal-actions" style="margin-top: 16px;">
-        <button id="btn-close-settings" class="btn-sm btn-cancel">Concluir</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Transmissão de Tela (Desktop) -->
-  <div id="screen-picker-modal" class="modal-backdrop">
-    <div class="modal-content" style="max-width: 650px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap: 8px; flex-wrap: wrap;">
-        <h3>🖥️ Escolha o que transmitir</h3>
-        <select id="stream-quality-select" class="device-select" style="width: auto;">
-          <option value="1080p60">1080p 60fps</option>
-          <option value="720p30">720p 30fps</option>
-        </select>
-      </div>
-
-      <div class="form-group" style="margin-top: 10px;">
-        <label for="screen-audio-select">🔊 Áudio da transmissão:</label>
-        <select id="screen-audio-select" class="device-select">
-          <option value="">🔇 Sem áudio</option>
-        </select>
-      </div>
-
-      <p class="modal-subtitle">Selecione uma janela de aplicativo ou a tela inteira</p>
-      <div id="screen-sources-list" class="sources-grid"></div>
-      <div class="modal-actions" style="margin-top: 16px;">
-        <button id="btn-close-screen-picker" class="btn-sm btn-cancel">Cancelar</button>
+        <label>Papel de Parede do Palco:
+          <input type="file" id="bg-file-input" accept="image/*" class="input-clean">
+          <button id="btn-reset-bg" class="btn-danger-clean mt-5">Remover Fundo</button>
+        </label>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=2.0"></script>
+  <script src="app.js"></script>
 </body>
 </html>
