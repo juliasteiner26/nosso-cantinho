@@ -12,60 +12,53 @@
   <!-- Barra Superior -->
   <header class="top-bar">
     <div class="top-left">
-      <div id="status-badge" class="status-badge">Conectando...</div>
-      <div id="call-timer" class="call-timer">⏱️ 00:00:00</div>
-    </div>
-
-    <div class="top-center">
       <div class="love-badge-container">
-        <span id="love-days-display" class="love-badge">💖 Carregando dias...</span>
+        <span id="love-days-display" class="love-badge">💖 Carregando...</span>
         <div class="love-tooltip">
           <p id="tooltip-full-time"></p>
           <p id="tooltip-next-event"></p>
         </div>
       </div>
+      <div id="status-badge" class="status-badge">Conectando...</div>
     </div>
 
     <div class="top-right">
-      <select id="role-select" class="select-clean" title="Alternar perfil nesta máquina">
-        <option value="host">Perfil: Mozin dela</option>
-        <option value="guest">Perfil: Lobinha</option>
+      <select id="role-select" class="select-role-hidden">
+        <option value="host">Mozin dela</option>
+        <option value="guest">Lobinha</option>
       </select>
-      <button id="btn-open-bucket" class="btn-icon" title="Nossos Planos (Bucket List)">📋</button>
-      <button id="btn-open-roulette" class="btn-icon" title="Sorteador / Roleta">🎲</button>
-      <button id="btn-open-notes" class="btn-icon" title="Anotações Compartilhadas">
+      <button id="btn-open-notes" class="btn-top-icon" title="Bloco de Notas">
         📝
         <span id="notes-unread-dot" class="unread-dot hidden"></span>
       </button>
-      <button id="btn-open-profile" class="btn-icon" title="Meu Perfil">👤</button>
-      <button id="btn-open-settings" class="btn-icon" title="Configurações">⚙️</button>
+      <button id="btn-open-roulette" class="btn-top-icon" title="Sorteador">🎲</button>
+      <button id="btn-open-bucket" class="btn-top-icon" title="Planos (Bucket List)">📋</button>
+      <button id="btn-open-profile" class="btn-top-icon" title="Perfil">👤</button>
+      <button id="btn-open-settings" class="btn-top-icon" title="Configurações">⚙️</button>
     </div>
   </header>
 
   <!-- Palco Principal -->
   <main id="stage" class="stage-container camera-focus-mode">
     
-    <!-- Grade de Transmissões de Tela -->
+    <!-- Grade de Telas Simultâneas -->
     <div id="screens-container" class="screens-grid hidden">
-      <!-- Transmissão Dela -->
       <div id="box-remote-screen" class="screen-box hidden" title="Duplo clique para focar">
         <div class="screen-header">
           <span class="screen-label" id="label-remote-screen">🖥️ Tela Dela</span>
-          <button id="btn-focus-remote-screen" class="btn-screen-action" title="Expandir tela dela">⛶</button>
+          <button id="btn-focus-remote-screen" class="btn-screen-action" title="Expandir">⛶</button>
         </div>
         <video id="remote-screen-video" autoplay playsinline></video>
       </div>
 
-      <!-- Sua Transmissão Local (Preview) -->
       <div id="box-local-screen" class="screen-box hidden" title="Duplo clique para focar">
         <div class="screen-header">
-          <span class="screen-label">🖥️ Sua Tela (Transmitindo)</span>
-          <button id="btn-hide-local-preview" class="btn-screen-action" title="Ocultar seu preview">👁️</button>
+          <span class="screen-label">🖥️ Sua Tela</span>
+          <button id="btn-hide-local-preview" class="btn-screen-action" title="Ocultar preview">👁️</button>
         </div>
         <video id="local-screen-video" autoplay playsinline muted></video>
       </div>
 
-      <!-- Botão flutuante para restaurar o preview se estiver oculto -->
       <button id="btn-restore-local-preview" class="btn-restore-preview hidden">
         🖥️ Mostrar meu preview
       </button>
@@ -73,63 +66,76 @@
 
     <!-- Área de Câmeras -->
     <div class="cameras-wrapper">
-      <!-- Câmera Remota (Dela) -->
-      <div id="box-remote" class="cam-box">
-        <div class="avatar-placeholder">
-          <img id="avatar-img-remote" src="" alt="Avatar">
-          <span id="avatar-name-remote" class="avatar-name"></span>
-          <span id="avatar-status-remote" class="avatar-status"></span>
-        </div>
-        <video id="remote-cam" autoplay playsinline></video>
-        <div class="cam-overlay">
-          <span id="name-tag-remote" class="name-tag"></span>
-          <span id="mute-indicator-remote" class="mute-tag hidden">🔇 Mutada</span>
-          <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera dela">⛶</button>
-        </div>
-      </div>
-
       <!-- Câmera Local (Você) -->
       <div id="box-local" class="cam-box">
+        <button id="btn-hide-self-cam" class="btn-cam-top-action" title="Ocultar minha câmera">👁️</button>
         <div class="avatar-placeholder">
-          <img id="avatar-img-local" src="" alt="Avatar">
+          <div class="avatar-ring">
+            <img id="avatar-img-local" src="" alt="Avatar">
+          </div>
           <span id="avatar-name-local" class="avatar-name"></span>
           <span id="avatar-status-local" class="avatar-status"></span>
         </div>
         <video id="local-cam" autoplay playsinline muted></video>
-        <div class="cam-overlay">
-          <span id="name-tag-local" class="name-tag"></span>
-          <span id="mute-indicator-local" class="mute-tag hidden">🔇 Mutado</span>
-          <button id="btn-hide-self-cam" class="btn-cam-action" title="Ocultar minha câmera">👁️</button>
+        <div class="cam-bottom-tag">
+          <span id="name-tag-local" class="name-tag-text"></span>
+          <span id="mute-indicator-local" class="mute-emoji-tag hidden">🔇</span>
         </div>
       </div>
 
-      <!-- Aba para reabrir sua câmera se estiver oculta -->
+      <!-- Câmera Remota (Dela) -->
+      <div id="box-remote" class="cam-box">
+        <button id="btn-fullscreen-cam" class="btn-cam-top-action" title="Expandir câmera">⛶</button>
+        <div class="avatar-placeholder">
+          <div class="avatar-ring">
+            <img id="avatar-img-remote" src="" alt="Avatar">
+          </div>
+          <span id="avatar-name-remote" class="avatar-name"></span>
+          <span id="avatar-status-remote" class="avatar-status"></span>
+        </div>
+        <video id="remote-cam" autoplay playsinline></video>
+        <div class="cam-bottom-tag">
+          <span id="name-tag-remote" class="name-tag-text"></span>
+          <span id="mute-indicator-remote" class="mute-emoji-tag hidden">🔇</span>
+        </div>
+      </div>
+
       <button id="btn-restore-self-cam" class="restore-cam-tab hidden">
         📷 Mostrar minha câmera
       </button>
     </div>
 
-    <!-- Elementos de Áudio -->
+    <!-- Áudio Remoto -->
     <audio id="remote-voice-audio" autoplay></audio>
 
-    <!-- HUD de Volume no Scroll -->
+    <!-- HUD de Volume Scroll -->
     <div id="volume-hud" class="volume-hud">
       <span id="hud-icon">🎙️</span>
       <span id="hud-text">100%</span>
     </div>
   </main>
 
-  <!-- Barra de Controles Inferior -->
-  <footer class="bottom-bar">
-    <div class="controls-group">
-      <button id="btn-toggle-mic" class="btn-control" title="Ligar/Desligar Microfone">🎤</button>
-      <button id="btn-toggle-cam" class="btn-control" title="Ligar/Desligar Câmera">📷</button>
-      <button id="btn-screen" class="btn-control btn-highlight" title="Transmitir Tela">🖥️ Transmitir</button>
-      <button id="btn-fullscreen" class="btn-control" title="Tela Cheia">⛶</button>
-      <button id="btn-pip-mode" class="btn-control" title="Modo PiP (Miniatura)">🗗</button>
-      <button id="btn-hangup" class="btn-control btn-danger" title="Reiniciar Chamada">📞</button>
-    </div>
-  </footer>
+  <!-- Dock Flutuante Inferior (Estilo Foto 2) -->
+  <div class="bottom-dock-wrapper">
+    <footer class="bottom-dock">
+      <button id="btn-toggle-mic" class="btn-dock-icon" title="Microfone">🎤</button>
+      <button id="btn-toggle-cam" class="btn-dock-icon" title="Câmera">📷</button>
+      <button id="btn-screen" class="btn-dock-icon btn-screen-active" title="Transmitir Tela">🖥️</button>
+      
+      <!-- Slider de Volume Inline -->
+      <div class="dock-volume-inline">
+        <span class="dock-vol-icon">🎙️</span>
+        <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1" class="dock-slider">
+        <span id="mic-vol-value" class="dock-vol-text">100%</span>
+      </div>
+
+      <div id="call-timer" class="dock-timer">⏱️ 00:00:00</div>
+      
+      <button id="btn-pip-mode" class="btn-dock-icon" title="Modo PiP">🗗</button>
+      <button id="btn-fullscreen" class="btn-dock-icon" title="Tela Cheia">⛶</button>
+      <button id="btn-hangup" class="btn-dock-icon btn-danger-dock" title="Desconectar">📞</button>
+    </footer>
+  </div>
 
   <!-- Modal Seletor de Tela -->
   <div id="screen-picker-modal" class="modal-backdrop">
@@ -175,7 +181,7 @@
         <button id="btn-close-roulette" class="btn-close-modal">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">Coloque uma opção por linha (filmes, jogos, comidas):</p>
+        <p class="modal-desc">Coloque uma opção por linha:</p>
         <textarea id="roulette-options-input" rows="5" class="input-area" placeholder="Minecraft&#10;Palia&#10;Filme de Terror&#10;Pedir Pizza"></textarea>
         <button id="btn-spin-roulette" class="btn-primary">Sortear Agora!</button>
         <div id="roulette-result-display" class="roulette-result"></div>
@@ -196,7 +202,7 @@
           <div class="add-cat-row">
             <input type="text" id="new-category-input" class="input-clean" placeholder="Nova categoria...">
             <button id="btn-add-category" class="btn-secondary">Adicionar</button>
-            <button id="btn-delete-active-category" class="btn-danger-clean" title="Excluir categoria atual">🗑️</button>
+            <button id="btn-delete-active-category" class="btn-danger-clean" title="Excluir categoria">🗑️</button>
           </div>
         </div>
         <div class="bucket-add-row">
@@ -228,9 +234,9 @@
           <input type="text" id="profile-name-input" class="input-clean">
         </label>
         <label>Status / Recado:
-          <input type="text" id="profile-status-input" class="input-clean" placeholder="Ex: 🎮 Jogando">
+          <input type="text" id="profile-status-input" class="input-clean" placeholder="Ex: 🟢 Disponível">
         </label>
-        <label>Data de Início (AAAA-MM-DD):
+        <label>Data de Início:
           <input type="date" id="profile-date-input" class="input-clean">
         </label>
         
@@ -250,7 +256,7 @@
   <div id="settings-modal" class="modal-backdrop">
     <div class="modal-box">
       <div class="modal-header">
-        <h3>⚙️ Configurações & Dispositivos</h3>
+        <h3>⚙️ Configurações</h3>
         <button id="btn-close-settings" class="btn-close-modal">✕</button>
       </div>
       <div class="modal-body form-grid">
@@ -269,11 +275,6 @@
           <button id="btn-low-gpu" class="btn-toggle">⚡ Modo Leve: OFF</button>
           <button id="btn-toggle-mirror-my-cam" class="btn-toggle">🪞 Espelhar Minha Câmera: Desativado</button>
         </div>
-
-        <label>Volume da Voz Dela:
-          <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1">
-          <span id="mic-vol-value">100%</span>
-        </label>
 
         <div id="container-screen-volume" class="hidden">
           <label>Volume da Tela Dela:

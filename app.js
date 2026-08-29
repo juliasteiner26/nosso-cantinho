@@ -39,14 +39,13 @@ function attemptPeerReconnect(delayMs = 1500) {
       try {
         peer.reconnect();
       } catch (err) {
-        console.warn('Falha ao tentar reconectar peer:', err);
+        console.warn('Falha ao reconectar peer:', err);
       }
     }
   }, delayMs);
 }
 
 peer.on('disconnected', () => {
-  console.warn('Peer desconectado da sinalização — reconectando...');
   if (statusBadge) {
     statusBadge.innerText = '🔄 Reconectando...';
     statusBadge.classList.remove('connected');
@@ -55,7 +54,6 @@ peer.on('disconnected', () => {
 });
 
 peer.on('error', (err) => {
-  console.error('Erro no Peer:', err && err.type, err);
   const recoverableTypes = ['network', 'server-error', 'socket-error', 'socket-closed'];
   if (err && recoverableTypes.includes(err.type)) {
     attemptPeerReconnect();
@@ -102,14 +100,14 @@ let isListeningForBinding = false;
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
 let myProfile = {
-  name: localStorage.getItem('profile_name') || (isHost ? 'Mozin dela' : 'Lobinha'),
+  name: localStorage.getItem('profile_name') || (isHost ? 'Mozão da Bella 🐺💙' : 'Neném da Thaya'),
   avatar: localStorage.getItem('profile_avatar') || defaultAvatar,
   status: localStorage.getItem('profile_status') || '🟢 Disponível',
   startDate: localStorage.getItem('profile_start_date') || '2026-07-30'
 };
 
 let remoteProfile = {
-  name: isHost ? 'Lobinha' : 'Mozin dela',
+  name: isHost ? 'Neném da Thaya' : 'Mozão da Bella 🐺💙',
   avatar: defaultAvatar,
   status: 'Aguardando...',
   startDate: myProfile.startDate
@@ -142,7 +140,7 @@ const volumeHud = document.getElementById('volume-hud');
 const hudIcon = document.getElementById('hud-icon');
 const hudText = document.getElementById('hud-text');
 
-// Telas Compartilhadas Simultâneas
+// Telas
 const screensContainer = document.getElementById('screens-container');
 const boxRemoteScreen = document.getElementById('box-remote-screen');
 const boxLocalScreen = document.getElementById('box-local-screen');
@@ -245,7 +243,7 @@ localCam.muted = true;
 remoteCam.muted = true;
 remoteVoiceAudio.muted = false;
 
-// --- SOM SINTETIZADO ESTILO DISCORD ---
+// Som estilo Discord
 function playStreamNotificationSound(isStarting = true) {
   try {
     initAudioAnalyser();
@@ -275,18 +273,17 @@ function playStreamNotificationSound(isStarting = true) {
     osc.start(now);
     osc.stop(now + 0.26);
   } catch (e) {
-    console.warn('Erro ao emitir som de transmissão:', e);
+    console.warn('Erro som:', e);
   }
 }
 
-// --- CONTROLE DE TELAS SIMULTÂNEAS ---
+// Layout de Telas
 function updateScreensLayout() {
   const isLocalActive = isScreenSharing && screenStream;
   const isRemoteActive = remoteScreenVideo && remoteScreenVideo.srcObject !== null;
 
   boxLocalScreen.classList.toggle('hidden', !isLocalActive || isLocalPreviewHidden);
   btnRestoreLocalPreview.classList.toggle('hidden', !isLocalActive || !isLocalPreviewHidden);
-
   boxRemoteScreen.classList.toggle('hidden', !isRemoteActive);
 
   if (labelRemoteScreen) {
@@ -330,7 +327,6 @@ function toggleScreenFocus(targetBox) {
 
     targetBox.classList.add('focused');
     targetBox.classList.remove('hidden-by-focus');
-
     otherBox.classList.remove('focused');
     otherBox.classList.add('hidden-by-focus');
 
@@ -366,13 +362,13 @@ function toggleRemoteFullscreenCam() {
   const isNowFullscreen = boxRemote.classList.toggle('fullscreen-focus');
   if (btnFullscreenCam) {
     btnFullscreenCam.innerText = isNowFullscreen ? '✕' : '⛶';
-    btnFullscreenCam.title = isNowFullscreen ? 'Recolher câmera' : 'Expandir câmera dela';
+    btnFullscreenCam.title = isNowFullscreen ? 'Recolher câmera' : 'Expandir câmera';
   }
 }
 
 if (boxRemote) {
   boxRemote.addEventListener('dblclick', (e) => {
-    if (e.target.closest('.btn-cam-action')) return;
+    if (e.target.closest('.btn-cam-top-action')) return;
     e.stopPropagation();
     toggleRemoteFullscreenCam();
   });
@@ -451,7 +447,7 @@ if (btnRestoreSelfCam) {
   });
 }
 
-// Contador de Tempo Juntas
+// Contador de Dias
 function updateLoveCounter() {
   try {
     let dateStr = myProfile.startDate || '2026-07-30';
@@ -471,26 +467,13 @@ function updateLoveCounter() {
 
     if (isNaN(startDate.getTime())) return;
 
-    let y1 = startDate.getFullYear();
-    let m1 = startDate.getMonth();
-    let d1 = startDate.getDate();
+    let y1 = startDate.getFullYear(), m1 = startDate.getMonth(), d1 = startDate.getDate();
+    let y2 = today.getFullYear(), m2 = today.getMonth(), d2 = today.getDate();
 
-    let y2 = today.getFullYear();
-    let m2 = today.getMonth();
-    let d2 = today.getDate();
+    let years = y2 - y1, months = m2 - m1, days = d2 - d1;
 
-    let years = y2 - y1;
-    let months = m2 - m1;
-    let days = d2 - d1;
-
-    if (days < 0) {
-      months--;
-      days += 30;
-    }
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
+    if (days < 0) { months--; days += 30; }
+    if (months < 0) { years--; months += 12; }
 
     const totalDaysDisplay = (years === 0 && months === 0) ? days : Math.max(0, Math.round((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -503,20 +486,14 @@ function updateLoveCounter() {
     if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? 'dia' : 'dias'}`);
 
     const tooltipFull = document.getElementById('tooltip-full-time');
-    if (tooltipFull) {
-      tooltipFull.innerText = `${parts.join(' e ')} compartilhando momentos ❤️`;
-    }
+    if (tooltipFull) tooltipFull.innerText = `${parts.join(' e ')} compartilhando momentos ❤️`;
 
     let nextAnniversary = new Date(y2, m2, d1, 0, 0, 0, 0);
-    if (nextAnniversary <= today) {
-      nextAnniversary = new Date(y2, m2 + 1, d1, 0, 0, 0, 0);
-    }
+    if (nextAnniversary <= today) nextAnniversary = new Date(y2, m2 + 1, d1, 0, 0, 0, 0);
     const daysUntilNext = Math.max(1, Math.round((nextAnniversary.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
 
     const tooltipNext = document.getElementById('tooltip-next-event');
-    if (tooltipNext) {
-      tooltipNext.innerText = `🎉 Próximo mesversário em ${daysUntilNext} ${daysUntilNext === 1 ? 'dia' : 'dias'}!`;
-    }
+    if (tooltipNext) tooltipNext.innerText = `🎉 Próximo mesversário em ${daysUntilNext} ${daysUntilNext === 1 ? 'dia' : 'dias'}!`;
   } catch (err) {
     console.error('Erro no contador:', err);
   }
@@ -524,7 +501,7 @@ function updateLoveCounter() {
 setInterval(updateLoveCounter, 60000);
 updateLoveCounter();
 
-// Cronômetro da Chamada
+// Cronômetro da Chamada (Integrado na Barra Inferior)
 let callStartTime = null;
 let callTimerInterval = null;
 
@@ -633,7 +610,7 @@ function renderBucketUI() {
         <input type="checkbox" ${item.done ? 'checked' : ''} style="cursor:pointer; width:16px; height:16px;">
         <span class="bucket-item-text">${item.text}</span>
       </div>
-      <button class="btn-bucket-delete" title="Excluir item">✕</button>
+      <button class="btn-bucket-delete" title="Excluir">✕</button>
     `;
 
     const checkbox = row.querySelector('input[type="checkbox"]');
@@ -701,7 +678,7 @@ if (btnOpenBucket) btnOpenBucket.addEventListener('click', () => {
 });
 if (btnCloseBucketTop) btnCloseBucketTop.addEventListener('click', () => bucketModal.classList.remove('active'));
 
-// Redimensionamento Inteligente
+// Redimensionamento
 function applyCamSize(size) {
   document.documentElement.style.setProperty('--remote-cam-width', `${size}px`);
   if (camSizeValue) camSizeValue.innerText = `${size}px`;
@@ -740,7 +717,7 @@ if (btnResetBg) {
 const savedBg = localStorage.getItem('app_stage_background');
 if (savedBg && stageEl) stageEl.style.backgroundImage = `url("${savedBg}")`;
 
-// Atalho Push-to-Mute Local
+// Atalho Push-to-Mute
 function updateBindingButtonLabel() {
   if (btnRecordKey) {
     btnRecordKey.innerText = `Atalho: ${pushToMuteConfig.label}`;
@@ -864,13 +841,13 @@ function deactivatePushMute() {
   }
 }
 
-// Substituição Segura de Trilhas
+// Troca de Trilhas
 function replaceTrackOnCall(newTrack, kind) {
   if (mainCall && mainCall.peerConnection) {
     const senders = mainCall.peerConnection.getSenders();
     const sender = senders.find(s => s.track && s.track.kind === kind);
     if (sender) {
-      sender.replaceTrack(newTrack).catch(err => console.error(`Erro ao substituir ${kind}:`, err));
+      sender.replaceTrack(newTrack).catch(err => console.error(`Erro ${kind}:`, err));
     }
   }
 }
@@ -969,7 +946,7 @@ if (btnFullscreen) {
 }
 
 stageEl.addEventListener('dblclick', (e) => {
-  if (e.target.closest('.cam-box') || e.target.closest('.screen-box') || e.target.closest('.btn-cam-action') || e.target.closest('.restore-cam-tab')) return;
+  if (e.target.closest('.cam-box') || e.target.closest('.screen-box') || e.target.closest('.btn-cam-top-action') || e.target.closest('.restore-cam-tab')) return;
   toggleFullscreen();
 });
 
@@ -1230,7 +1207,7 @@ async function toggleScreenShare() {
       });
       screenPickerModal.classList.add('active');
     } catch (err) {
-      console.error('Erro ao listar fontes:', err);
+      console.error('Erro fontes:', err);
     }
   }
 }
@@ -1264,7 +1241,7 @@ async function startElectronStream(sourceId) {
         });
         cleanAudioTrack = audioOnlyStream.getAudioTracks()[0];
       } catch (audioErr) {
-        console.warn('Erro ao capturar áudio da tela:', audioErr);
+        console.warn('Erro áudio tela:', audioErr);
       }
     }
 
@@ -1286,8 +1263,7 @@ function handleStreamStart(stream) {
   localScreenVideo.muted = true;
   localScreenVideo.play().catch(() => {});
 
-  btnScreen.classList.add('btn-danger');
-  btnScreen.classList.remove('btn-highlight');
+  btnScreen.classList.add('btn-active');
 
   sendDataMessage({ type: 'SCREEN_STATE', isSharing: true });
   sendScreenCall();
@@ -1305,8 +1281,7 @@ function stopScreenSharing() {
   playStreamNotificationSound(false);
 
   localScreenVideo.srcObject = null;
-  btnScreen.classList.remove('btn-danger');
-  btnScreen.classList.add('btn-highlight');
+  btnScreen.classList.remove('btn-active');
 
   sendDataMessage({ type: 'SCREEN_STATE', isSharing: false });
   if (screenCall) {
@@ -1392,7 +1367,6 @@ function sendScreenCall() {
   if (!isScreenSharing || !screenStream) return;
 
   if (peer.disconnected) {
-    console.warn('Peer desconectado ao transmitir tela — reconectando...');
     attemptPeerReconnect();
     setTimeout(sendScreenCall, 2000);
     return;
@@ -1461,7 +1435,6 @@ function setupDataConnection(conn) {
 
 function initiateCall() {
   if (peer.disconnected) {
-    console.warn('Peer desconectado ao iniciar chamada — reconectando...');
     attemptPeerReconnect();
     return;
   }
@@ -1582,7 +1555,7 @@ profileFileInput.addEventListener('change', (e) => {
       const MAX = 200;
       let w = img.width, h = img.height;
       if (w > h && w > MAX) { h *= MAX / w; w = MAX; }
-      else if (h > MAX) { h *= MAX / h; h = MAX; }
+      else if (h > MAX) { w *= MAX / h; h = MAX; }
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       tempAvatarBase64 = canvas.toDataURL('image/jpeg', 0.8);
