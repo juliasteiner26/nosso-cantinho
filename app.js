@@ -46,7 +46,11 @@ function attemptPeerReconnect(delayMs = 1500) {
 }
 
 peer.on('disconnected', () => {
-  if (statusBadge) {
+  // CORREÇÃO: só mexe no status visual se a chamada principal não estiver
+  // de pé — senão fica piscando "Reconectando..." em cima de uma call que
+  // continua funcionando normalmente (a mídia já negociada não depende
+  // mais da sinalização, só conexões NOVAS dependem).
+  if (statusBadge && !(mainCall && mainCall.open)) {
     statusBadge.innerText = '🔄 Reconectando...';
     statusBadge.classList.remove('connected');
   }
@@ -1401,17 +1405,41 @@ function initiateCall() {
   attachMainCallEvents(mainCall);
 }
 
+// CORREÇÃO PRINCIPAL: 'open' do peer dispara de novo toda vez que a
+// sinalização reconecta (peer.reconnect()), não só na primeira conexão.
+// Antes, isso reiniciava o microfone, resetava o texto de status pra
+// "Aguardando..." e recriava o timer de reconexão do lado da convidada —
+// tudo isso mesmo com a chamada principal já funcionando perfeitamente,
+// causando os "bugs" aleatórios na câmera/status. Agora só a PRIMEIRA vez
+// faz esse setup completo; reconexões de sinalização subsequentes só
+// confirmam nos bastidores, sem derrubar nada que já está de pé.
+let hasStartedInitialSetup = false;
+
+function ensureGuestReconnectTimer() {
+  if (isHost) return;
+  if (mainCall && mainCall.open) return; // já conectada, nada a fazer
+  if (connectTimer) clearInterval(connectTimer);
+  connectTimer = setInterval(() => {
+    if (!mainCall || !mainCall.open) initiateCall();
+    else clearInterval(connectTimer);
+  }, 2500);
+}
+
 peer.on('open', () => {
-  if (statusBadge) statusBadge.innerText = isHost ? 'Aguardando minha vida...' : 'Conectando ao cantinho...';
-  startMicrophone().then(() => {
-    if (!isHost) {
-      if (connectTimer) clearInterval(connectTimer);
-      connectTimer = setInterval(() => {
-        if (!mainCall || !mainCall.open) initiateCall();
-        else clearInterval(connectTimer);
-      }, 2500);
+  if (!hasStartedInitialSetup) {
+    hasStartedInitialSetup = true;
+    if (statusBadge) statusBadge.innerText = isHost ? 'Aguardando minha vida...' : 'Conectando ao cantinho...';
+    startMicrophone().then(() => {
+      ensureGuestReconnectTimer();
+    });
+  } else {
+    console.log('Peer reconectado à sinalização (chamada principal não foi afetada).');
+    if (mainCall && mainCall.open && statusBadge) {
+      statusBadge.innerText = '🟢 Conectadas';
+      statusBadge.classList.add('connected');
     }
-  });
+    ensureGuestReconnectTimer();
+  }
 });
 
 peer.on('connection', conn => setupDataConnection(conn));
@@ -1508,7 +1536,7 @@ profileFileInput.addEventListener('change', (e) => {
       const MAX = 200;
       let w = img.width, h = img.height;
       if (w > h && w > MAX) { h *= MAX / w; w = MAX; }
-      else if (h > MAX) { h *= MAX / h; h = MAX; }
+      else if (h > MAX) { w *= MAX / h; h = MAX; }
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       tempAvatarBase64 = canvas.toDataURL('image/jpeg', 0.8);
