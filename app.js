@@ -46,10 +46,6 @@ function attemptPeerReconnect(delayMs = 1500) {
 }
 
 peer.on('disconnected', () => {
-  // CORREÇÃO: só mexe no status visual se a chamada principal não estiver
-  // de pé — senão fica piscando "Reconectando..." em cima de uma call que
-  // continua funcionando normalmente (a mídia já negociada não depende
-  // mais da sinalização, só conexões NOVAS dependem).
   if (statusBadge && !(mainCall && mainCall.open)) {
     statusBadge.innerText = '🔄 Reconectando...';
     statusBadge.classList.remove('connected');
@@ -80,6 +76,13 @@ let isNoiseSuppressionOn = true;
 let isLowGpuMode = false;
 let isPipActive = false;
 let isSelfCamHidden = false;
+
+// Controle de visibilidade do preview da SUA própria transmissão
+let isLocalScreenPreviewHidden = false;
+
+// Indica se a transmissão que você está ASSISTINDO foi destacada numa
+// janela separada (Picture-in-Picture nativo do navegador/Electron)
+let isStreamPoppedOut = false;
 
 // Estado de Espelhamento Sincronizado
 let isMyCamMirrored = (localStorage.getItem('mirror_my_camera') === 'true');
@@ -143,6 +146,9 @@ const boxLocal = document.getElementById('box-local');
 const boxRemote = document.getElementById('box-remote');
 const mainStream = document.getElementById('main-stream');
 const localScreenStream = document.getElementById('local-screen-stream');
+const localScreenPreviewWrap = document.getElementById('local-screen-preview-wrap');
+const btnHideLocalScreenPreview = document.getElementById('btn-hide-local-screen-preview');
+const btnPopoutStream = document.getElementById('btn-popout-stream');
 const remoteVoiceAudio = document.getElementById('remote-voice-audio');
 const containerScreenVolume = document.getElementById('container-screen-volume');
 const volumeHud = document.getElementById('volume-hud');
@@ -272,6 +278,72 @@ function playStreamNotificationSound(isStarting = true) {
   } catch (e) {
     console.warn('Erro ao reproduzir som de transmissão:', e);
   }
+}
+
+// Centraliza a decisão de quando o palco deve focar nas câmeras (modo
+// conversa) versus focar na tela transmitida (câmeras pequenas no canto).
+function updateStageLayoutMode() {
+  if (!stageEl) return;
+  const hasAnyScreenContent = isScreenSharing || !!mainStream.srcObject;
+  const shouldFocusCameras = isStreamPoppedOut || !hasAnyScreenContent;
+  stageEl.classList.toggle('camera-focus-mode', shouldFocusCameras);
+}
+
+// Mostra/esconde o botão de destacar a transmissão numa janela separada
+function updatePopoutButtonVisibility() {
+  if (!btnPopoutStream) return;
+  const hasWatchableScreen = !!mainStream.srcObject;
+  btnPopoutStream.classList.toggle('hidden', !hasWatchableScreen);
+}
+
+if (btnPopoutStream) {
+  btnPopoutStream.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (mainStream.srcObject) {
+        await mainStream.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.warn('Não foi possível abrir a janela separada:', err);
+    }
+  });
+}
+
+mainStream.addEventListener('enterpictureinpicture', () => {
+  isStreamPoppedOut = true;
+  if (btnPopoutStream) btnPopoutStream.innerText = '🗕';
+  updateStageLayoutMode();
+});
+
+mainStream.addEventListener('leavepictureinpicture', () => {
+  isStreamPoppedOut = false;
+  if (btnPopoutStream) btnPopoutStream.innerText = '🗔';
+  updateStageLayoutMode();
+});
+
+// Decide se o preview da SUA transmissão deve aparecer
+function updateLocalScreenPreviewVisibility() {
+  if (!localScreenPreviewWrap) return;
+
+  if (!isScreenSharing) {
+    localScreenPreviewWrap.classList.add('hidden');
+    return;
+  }
+
+  const bothSharing = !!mainStream.srcObject;
+  const shouldShow = !isLocalScreenPreviewHidden && !bothSharing;
+  localScreenPreviewWrap.classList.toggle('hidden', !shouldShow);
+}
+
+if (btnHideLocalScreenPreview) {
+  btnHideLocalScreenPreview.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isLocalScreenPreviewHidden = !isLocalScreenPreviewHidden;
+    btnHideLocalScreenPreview.innerText = isLocalScreenPreviewHidden ? '🚫' : '👁️';
+    updateLocalScreenPreviewVisibility();
+  });
 }
 
 // 1. CÂMERA REMOTA EM TELA CHEIA (Alternância e botão com ícone dinâmico)
@@ -406,7 +478,12 @@ function updateLoveCounter() {
       months += 12;
     }
 
-    const totalDaysDisplay = (years === 0 && months === 0) ? days : Math.max(0, Math.round((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    // CORREÇÃO: Math.floor em vez de Math.round — só conta um dia como
+    // completo quando ele realmente passou por inteiro. Math.round podia
+    // arredondar pra cima e adiantar a contagem em 1 dia antes da hora.
+    const totalDaysDisplay = (years === 0 && months === 0)
+      ? days
+      : Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     const daysBadge = document.getElementById('love-days-display');
     if (daysBadge) daysBadge.innerText = `💖 ${totalDaysDisplay} dias juntas`;
@@ -902,7 +979,8 @@ btnLowGpu.addEventListener('click', () => {
   btnLowGpu.classList.toggle('btn-toggle-on', isLowGpuMode);
 });
 
-// Modo PiP
+// Modo PiP (Sobrepor o app sobre jogos — não confundir com o
+// Picture-in-Picture nativo do vídeo, que é a função de destacar)
 function togglePiP() {
   isPipActive = !isPipActive;
   document.body.classList.toggle('pip-active', isPipActive);
@@ -1178,8 +1256,21 @@ async function startElectronStream(sourceId) {
     let cleanAudioTrack = null;
     if (audioDeviceId) {
       try {
+        // CORREÇÃO: desligamos explicitamente o cancelamento de eco,
+        // supressão de ruído e controle automático de ganho nessa captura.
+        // Sem isso, o navegador aplica por padrão um processamento pensado
+        // pra VOZ HUMANA em qualquer getUserMedia — inclusive no áudio do
+        // jogo vindo pelo VB-CABLE. O controle automático de ganho, em
+        // especial, vai se "recalibrando" sozinho tentando normalizar um
+        // áudio que não é voz, e é isso que causa o volume cair e ficar
+        // com artefatos estranhos depois de um tempo.
         const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
-          audio: { deviceId: { exact: audioDeviceId } },
+          audio: {
+            deviceId: { exact: audioDeviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          },
           video: false
         });
         cleanAudioTrack = audioOnlyStream.getAudioTracks()[0];
@@ -1202,13 +1293,13 @@ function handleStreamStart(stream) {
   isScreenSharing = true;
   playStreamNotificationSound(true);
 
-  if (stageEl) stageEl.classList.remove('camera-focus-mode');
+  updateStageLayoutMode();
 
   if (localScreenStream) {
     localScreenStream.srcObject = stream;
-    localScreenStream.classList.remove('hidden');
     localScreenStream.play().catch(() => {});
   }
+  updateLocalScreenPreviewVisibility();
 
   btnScreen.classList.add('btn-danger');
   btnScreen.classList.remove('btn-highlight');
@@ -1230,13 +1321,9 @@ function stopScreenSharing() {
 
   if (localScreenStream) {
     localScreenStream.srcObject = null;
-    localScreenStream.classList.add('hidden');
   }
-
-  // Se a outra pessoa não estiver transmitindo, volta ao modo foco das câmeras
-  if (!mainStream.srcObject) {
-    if (stageEl) stageEl.classList.add('camera-focus-mode');
-  }
+  updateLocalScreenPreviewVisibility();
+  updateStageLayoutMode();
 
   btnScreen.classList.remove('btn-danger');
   btnScreen.classList.add('btn-highlight');
@@ -1360,15 +1447,16 @@ function setupDataConnection(conn) {
       if (boxRemote) boxRemote.classList.toggle('mirrored', isRemoteCamMirrored);
     } else if (data.type === 'SCREEN_STATE') {
       playStreamNotificationSound(data.isSharing);
-      if (data.isSharing) {
-        stageEl.classList.remove('camera-focus-mode');
-      } else {
+      if (!data.isSharing) {
         if (containerScreenVolume) containerScreenVolume.classList.add('hidden');
         mainStream.srcObject = null;
-        if (!isScreenSharing) {
-          stageEl.classList.add('camera-focus-mode');
+        if (document.pictureInPictureElement === mainStream) {
+          document.exitPictureInPicture().catch(() => {});
         }
+        updatePopoutButtonVisibility();
       }
+      updateStageLayoutMode();
+      updateLocalScreenPreviewVisibility();
       updateAutohideState();
     } else if (data.type === 'NOTES_UPDATE') {
       sharedNotesArea.value = data.text;
@@ -1405,19 +1493,11 @@ function initiateCall() {
   attachMainCallEvents(mainCall);
 }
 
-// CORREÇÃO PRINCIPAL: 'open' do peer dispara de novo toda vez que a
-// sinalização reconecta (peer.reconnect()), não só na primeira conexão.
-// Antes, isso reiniciava o microfone, resetava o texto de status pra
-// "Aguardando..." e recriava o timer de reconexão do lado da convidada —
-// tudo isso mesmo com a chamada principal já funcionando perfeitamente,
-// causando os "bugs" aleatórios na câmera/status. Agora só a PRIMEIRA vez
-// faz esse setup completo; reconexões de sinalização subsequentes só
-// confirmam nos bastidores, sem derrubar nada que já está de pé.
 let hasStartedInitialSetup = false;
 
 function ensureGuestReconnectTimer() {
   if (isHost) return;
-  if (mainCall && mainCall.open) return; // já conectada, nada a fazer
+  if (mainCall && mainCall.open) return;
   if (connectTimer) clearInterval(connectTimer);
   connectTimer = setInterval(() => {
     if (!mainCall || !mainCall.open) initiateCall();
@@ -1448,13 +1528,15 @@ peer.on('call', call => {
   if (call.metadata && call.metadata.type === 'screen') {
     call.answer();
     call.on('stream', stream => {
-      if (stageEl) stageEl.classList.remove('camera-focus-mode');
       mainStream.srcObject = stream;
       mainStream.muted = false;
       mainStream.volume = Math.min(screenVolumeMultiplier, 1.0);
       mainStream.play().catch(() => {});
       const hasAudio = stream.getAudioTracks().length > 0;
       if (containerScreenVolume) containerScreenVolume.classList.toggle('hidden', !hasAudio);
+      updateStageLayoutMode();
+      updatePopoutButtonVisibility();
+      updateLocalScreenPreviewVisibility();
       updateAutohideState();
     });
   } else {
