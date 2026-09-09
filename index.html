@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Nosso Cantinho</title>
-  <link rel="stylesheet" href="style.css?v=2.1">
+  <link rel="stylesheet" href="style.css?v=2.4">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <!-- Botão Flutuante de Restaurar PiP -->
+  <!-- Botão Flutuante de Restaurar PiP (modo Sobrepor do app) -->
   <button id="btn-pip-restore" title="Restaurar tamanho normal">✕</button>
 
   <!-- Botão Flutuante para Restaurar Própria Câmera Oculta -->
@@ -51,7 +51,12 @@
     
     <!-- Streams de Transmissão (Remoto e Local) -->
     <video id="main-stream" autoplay playsinline></video>
-    <video id="local-screen-stream" autoplay playsinline muted class="hidden"></video>
+
+    <!-- Preview da SUA própria transmissão -->
+    <div id="local-screen-preview-wrap" class="hidden">
+      <video id="local-screen-stream" autoplay playsinline muted></video>
+      <button id="btn-hide-local-screen-preview" class="btn-cam-action" title="Ocultar minha prévia de tela transmitida">👁️</button>
+    </div>
 
     <!-- Indicador HUD de Volume -->
     <div id="volume-hud" class="volume-hud">
@@ -101,6 +106,9 @@
     <button id="btn-toggle-mic" class="dock-btn" title="Mutar/Desmutar Microfone">🎤</button>
     <button id="btn-toggle-cam" class="dock-btn" title="Ligar/Desligar Câmera">📷</button>
     <button id="btn-screen" class="dock-btn btn-highlight" title="Transmitir Tela">🖥️</button>
+
+    <!-- Destacar a transmissão que você está assistindo numa janela separada -->
+    <button id="btn-popout-stream" class="dock-btn hidden" title="Abrir a transmissão dela numa janela separada">🗔</button>
 
     <div class="volume-container" id="container-mic-volume" title="Volume da voz dela">
       <span class="vol-icon" id="mic-vol-icon">🎙️</span>
@@ -317,6 +325,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=2.1"></script>
+  <script src="app.js?v=2.4"></script>
 </body>
 </html>

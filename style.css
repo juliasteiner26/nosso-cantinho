@@ -172,19 +172,33 @@ header#main-header {
   display: block;
 }
 
-/* Transmissão Própria Local (Preview Inteligente sem cobrir a dela) */
-#local-screen-stream {
+/* Preview da SUA transmissão: o container tem a posição/tamanho, o
+   vídeo preenche 100% dele, e o botão de esconder fica ancorado nele */
+#local-screen-preview-wrap {
   position: absolute;
   bottom: 80px;
   left: 20px;
   width: 240px;
   aspect-ratio: 16 / 9;
-  object-fit: contain;
   z-index: 105;
+  border-radius: 10px;
+  overflow: visible;
+}
+
+#local-screen-preview-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   background: #000;
   border-radius: 10px;
   border: 2px solid #5865f2;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
+  display: block;
+}
+
+#local-screen-preview-wrap .btn-cam-action {
+  top: 6px;
+  right: 6px;
 }
 
 /* Câmeras em Miniatura sobrepostas no Canto Direito */
@@ -221,7 +235,7 @@ header#main-header {
 
 /* Modo Conversa (Quando NÃO houver transmissão ativa) */
 #stage.camera-focus-mode #main-stream,
-#stage.camera-focus-mode #local-screen-stream {
+#stage.camera-focus-mode #local-screen-preview-wrap {
   display: none !important;
 }
 
@@ -704,7 +718,7 @@ body.autohide-controls.show-controls footer#main-footer {
   z-index: 100002; align-items: center; justify-content: center; font-size: 12px;
 }
 body.pip-active #btn-pip-restore { display: flex !important; }
-body.pip-active header, body.pip-active footer, body.pip-active #box-local, body.pip-active #main-stream, body.pip-active #local-screen-stream { display: none !important; }
+body.pip-active header, body.pip-active footer, body.pip-active #box-local, body.pip-active #main-stream, body.pip-active #local-screen-preview-wrap { display: none !important; }
 body.pip-active #stage { width: 100vw !important; height: 100vh !important; height: 100dvh !important; }
 body.pip-active #box-remote { width: 100vw !important; height: 100vh !important; height: 100dvh !important; max-width: 100% !important; border-radius: 0 !important; }
 
@@ -812,5 +826,11 @@ body.pip-active #box-remote { width: 100vw !important; height: 100vh !important;
 
   #btn-pip-mode {
     display: none !important;
+  }
+
+  #local-screen-preview-wrap {
+    width: 130px;
+    bottom: 70px;
+    left: 10px;
   }
 }
