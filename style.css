@@ -5,10 +5,6 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-:root {
-  --remote-cam-width: 700px;
-}
-
 body.theme-streamer {
   --bg-color: #080a0f;
   --panel-bg: rgba(18, 20, 29, 0.95);
@@ -139,7 +135,7 @@ header#main-header {
 
 #stage {
   position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-  background: var(--bg-color); z-index: 1; pointer-events: none;
+  background: var(--bg-color); z-index: 1; display: flex; align-items: center; justify-content: center;
 }
 
 #main-stream {
@@ -147,19 +143,20 @@ header#main-header {
   object-fit: contain; z-index: 1; pointer-events: auto;
 }
 
+/* CARDS DE CÂMERA E AVATAR NO LAYOUT ÚNICO DEFINITIVO */
 .cams-overlay {
-  position: absolute !important; top: 60px !important; right: 16px !important;
-  display: flex !important; flex-direction: column !important; gap: 12px !important;
-  z-index: 100 !important; pointer-events: auto !important;
+  position: relative !important; z-index: 100 !important;
+  display: flex !important; flex-direction: row !important;
+  justify-content: center !important; align-items: center !important;
+  gap: 24px !important; width: 100% !important; padding: 20px;
 }
 
-/* NOVO DESIGN PREMIUM PARA OS CARDS DE AVATAR & CÂMERA */
 .cam-box.streamer-card {
-  width: 220px !important; aspect-ratio: 16 / 9 !important;
+  width: 520px !important; height: 320px !important;
   background: linear-gradient(145deg, #12141d 0%, #0d0e15 100%);
-  border-radius: 16px !important;
-  border: 1px solid rgba(88, 101, 242, 0.3) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  border-radius: 20px !important;
+  border: 1px solid rgba(88, 101, 242, 0.4) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
   position: relative; display: flex; align-items: center; justify-content: center;
   overflow: hidden; pointer-events: auto !important;
 }
@@ -170,7 +167,7 @@ header#main-header {
   display: flex !important; flex-direction: column !important;
   align-items: center !important; justify-content: center !important;
   gap: 12px !important; z-index: 2 !important;
-  background: radial-gradient(circle at center, rgba(30, 34, 50, 0.95) 0%, rgba(12, 14, 20, 0.98) 100%);
+  background: radial-gradient(circle at center, rgba(26, 30, 46, 0.95) 0%, rgba(10, 12, 18, 0.98) 100%);
 }
 
 .avatar-circle {
@@ -181,33 +178,16 @@ header#main-header {
 }
 
 .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
-.avatar-name { font-size: 17px !important; font-weight: 700; color: #ffffff; text-align: center; letter-spacing: 0.5px; }
+.avatar-name { font-size: 18px !important; font-weight: 700; color: #ffffff; text-align: center; }
 .avatar-status { font-size: 12px !important; color: #949ba4; text-align: center; }
 
 .cam-label {
-  position: absolute; bottom: 8px; left: 8px;
+  position: absolute; bottom: 10px; left: 10px;
   background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(6px); padding: 4px 10px;
   border-radius: 8px; font-size: 11px; font-weight: 600; color: #fff;
   z-index: 3; display: flex; align-items: center; gap: 6px; border: 1px solid rgba(255,255,255,0.08);
 }
 
-.btn-cam-action {
-  position: absolute; top: 8px; right: 8px;
-  background: rgba(18, 20, 29, 0.85); border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff; border-radius: 50%; width: 26px; height: 26px; font-size: 11px;
-  cursor: pointer; z-index: 50; display: flex !important; align-items: center; justify-content: center;
-}
-
-#stage.camera-focus-mode #main-stream { display: none !important; }
-#stage.camera-focus-mode .cams-overlay {
-  top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
-  width: 100vw !important; height: 100vh !important;
-  display: flex !important; flex-direction: row !important;
-  justify-content: center !important; align-items: center !important; gap: 24px !important;
-}
-#stage.camera-focus-mode .cam-box.streamer-card { width: var(--remote-cam-width, 700px) !important; max-width: 46vw !important; }
-
-/* BARRA DE FERRAMENTAS DE CONFIGURAÇÃO DE TRANSMISSÃO DE TELA */
 .stream-settings-toolbar {
   background: #11131c; border: 1px solid #282a36; border-radius: 10px;
   padding: 10px 14px; margin-bottom: 12px; display: flex; gap: 16px; align-items: center; justify-content: space-between;
@@ -223,7 +203,6 @@ header#main-header {
 .toggle-container { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: #fff; }
 .toggle-container input { cursor: pointer; accent-color: var(--accent-color); width: 16px; height: 16px; }
 
-/* SELEÇÃO DE TRANSMISSÃO DE TELA GRID */
 .sources-grid {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
@@ -264,7 +243,6 @@ header#main-header {
   white-space: nowrap;
 }
 
-/* HUD VOLUME */
 .volume-hud {
   position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.85); padding: 8px 16px; border-radius: 20px;

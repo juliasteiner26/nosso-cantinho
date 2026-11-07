@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=13.0">
+  <link rel="stylesheet" href="style.css?v=14.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -102,9 +102,7 @@
     </div>
   </div>
 
-  <!-- TELA 3: PALCO DA CHAMADA -->
-  <button id="btn-pip-restore" class="hidden" title="Restaurar tamanho normal">✕</button>
-
+  <!-- TELA 3: PALCO DA CHAMADA (LAYOUT ÚNICO DE STREAMING E CÂMERAS) -->
   <header id="main-header">
     <div class="header-left">
       <div class="room-info-badge" id="room-info-badge">
@@ -117,7 +115,6 @@
     <div class="header-right">
       <button class="btn-icon vip-only hidden" id="btn-open-bucket" title="Metas & Planos">📋</button>
       <button class="btn-icon vip-only hidden" id="btn-open-roulette" title="Sorteador">🎲</button>
-
       <button class="btn-icon badge-wrapper" id="btn-open-chat" title="Chat da Sala">
         💬
         <span class="unread-dot hidden" id="chat-unread-dot"></span>
@@ -131,23 +128,17 @@
     </div>
   </header>
 
-  <main id="stage" class="camera-focus-mode">
-    <video id="main-stream" autoplay playsinline></video>
-
-    <div id="local-screen-preview-wrap" class="hidden">
-      <video id="local-screen-stream" autoplay playsinline muted></video>
-      <button id="btn-hide-local-screen-preview" class="btn-cam-action">👁️</button>
-    </div>
+  <main id="stage">
+    <video id="main-stream" autoplay playsinline class="hidden"></video>
 
     <div id="volume-hud" class="volume-hud hidden">
       <span id="hud-icon">🎙️</span>
       <span id="hud-text">100%</span>
     </div>
 
-    <div class="cams-overlay">
+    <!-- LAYOUT ÚNICO FIXO: CARDS DE USUÁRIOS CENTRALIZADOS -->
+    <div class="cams-overlay" id="cams-container">
       <div class="cam-box streamer-card" id="box-local">
-        <button id="btn-hide-self-cam" class="btn-cam-action" title="Esconder">👁️</button>
-        <div class="speaking-glow-border" id="glow-local"></div>
         <div class="avatar-placeholder" id="avatar-local">
           <div class="avatar-circle">
             <img id="avatar-img-local" src="" alt="Avatar Local">
@@ -155,7 +146,7 @@
           <span class="avatar-name" id="avatar-name-local">Você</span>
           <span class="avatar-status" id="avatar-status-local">Disponível</span>
         </div>
-        <video id="local-cam" autoplay playsinline muted></video>
+        <video id="local-cam" autoplay playsinline muted class="hidden"></video>
         <span class="cam-label" id="label-local">
           <span id="name-tag-local">Você</span>
           <span id="mute-indicator-local" class="mute-indicator">🔇</span>
@@ -163,8 +154,6 @@
       </div>
 
       <div class="cam-box streamer-card" id="box-remote">
-        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir">⛶</button>
-        <div class="speaking-glow-border" id="glow-remote"></div>
         <div class="avatar-placeholder" id="avatar-remote">
           <div class="avatar-circle">
             <img id="avatar-img-remote" src="" alt="Avatar Remoto">
@@ -172,7 +161,7 @@
           <span class="avatar-name" id="avatar-name-remote">Convidado</span>
           <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
         </div>
-        <video id="remote-cam" autoplay playsinline></video>
+        <video id="remote-cam" autoplay playsinline class="hidden"></video>
         <span class="cam-label" id="label-remote">
           <span id="name-tag-remote">Convidado</span>
           <span id="mute-indicator-remote" class="mute-indicator hidden">🔇</span>
@@ -187,7 +176,6 @@
     <button id="btn-toggle-mic" class="dock-btn btn-danger">🔇</button>
     <button id="btn-toggle-cam" class="dock-btn">📷</button>
     <button id="btn-screen" class="dock-btn btn-highlight">🖥️</button>
-    <button id="btn-popout-stream" class="dock-btn hidden">🗔</button>
 
     <div class="volume-container" id="container-mic-volume">
       <span class="vol-icon">🎙️</span>
@@ -195,15 +183,8 @@
       <span id="mic-vol-value">100%</span>
     </div>
 
-    <div class="volume-container hidden" id="container-screen-volume">
-      <span class="vol-icon">🖥️</span>
-      <input type="range" id="remote-screen-volume" min="0" max="2" step="0.05" value="1">
-      <span id="screen-vol-value">100%</span>
-    </div>
-
     <div class="call-timer-badge" id="call-timer">⏱️ 00:00:00</div>
 
-    <button id="btn-pip-mode" class="dock-btn">🗗</button>
     <button id="btn-fullscreen" class="dock-btn">⛶</button>
     <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
@@ -297,7 +278,7 @@
     </div>
   </div>
 
-  <!-- MODAL DE SELEÇÃO DE TELA COM CONTROLES DE QUALIDADE E ÁUDIO DO SISTEMA -->
+  <!-- MODAL DE TRANSMISSÃO -->
   <div id="screen-picker-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 780px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
@@ -305,7 +286,6 @@
         <button id="btn-close-screen-picker-top" class="btn-sm btn-cancel" style="padding:4px 10px;">✕</button>
       </div>
 
-      <!-- PAINEL DE QUALIDADE & CONFIGURAÇÃO DE ÁUDIO DO SISTEMA -->
       <div class="stream-settings-toolbar">
         <div class="setting-item">
           <label>⚙️ Qualidade / FPS:</label>
@@ -320,7 +300,7 @@
           <label class="toggle-container">
             <input type="checkbox" id="screen-include-audio" checked>
             <span class="toggle-checkmark"></span>
-            🔊 Capturar Áudio do Sistema / Jogo
+            🔊 Capturar Áudio do Sistema
           </label>
         </div>
       </div>
@@ -333,6 +313,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=13.0"></script>
+  <script src="app.js?v=14.0"></script>
 </body>
 </html>

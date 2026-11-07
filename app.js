@@ -301,8 +301,10 @@ function initPeerConnection(roomName, pin, isHost) {
     if (call.metadata && call.metadata.type === 'screen') {
       call.answer();
       call.on('stream', stream => {
-        mainStream.srcObject = stream;
-        updateStageLayoutMode();
+        const mainStreamEl = document.getElementById('main-stream');
+        mainStreamEl.srcObject = stream;
+        mainStreamEl.classList.remove('hidden');
+        document.getElementById('cams-container').classList.add('hidden');
       });
     } else {
       mainCall = call;
@@ -323,7 +325,6 @@ function initiateCallToHost() {
 
 let micStream = null; let screenStream = null; let mainCall = null; let screenCall = null; let dataConn = null;
 const mainStream = document.getElementById('main-stream');
-const stageEl = document.getElementById('stage');
 const btnToggleMic = document.getElementById('btn-toggle-mic');
 const muteIndicatorLocal = document.getElementById('mute-indicator-local');
 const screenPickerModal = document.getElementById('screen-picker-modal');
@@ -335,6 +336,7 @@ function sendScreenCall() {
   if (targetId) screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
+// VALIDAÇÃO RÍGIDA DE PIN VIA HANDSHAKE PEERJS
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
@@ -407,13 +409,13 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-// FUNÇÃO DE TRANSMISSÃO COM ÁUDIO DO SISTEMA E SELEÇÃO DE QUALIDADE (RESOLUÇÃO/FPS)
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
     screenStream = null;
     mainStream.srcObject = null;
-    updateStageLayoutMode();
+    mainStream.classList.add('hidden');
+    document.getElementById('cams-container').classList.remove('hidden');
     return;
   }
 
@@ -445,11 +447,7 @@ async function startScreenShare() {
           screenPickerModal.classList.remove('active');
           try {
             const constraints = {
-              audio: includeAudio ? {
-                mandatory: {
-                  chromeMediaSource: 'desktop'
-                }
-              } : false,
+              audio: includeAudio ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
               video: {
                 mandatory: {
                   chromeMediaSource: 'desktop',
@@ -464,15 +462,17 @@ async function startScreenShare() {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             screenStream = stream;
             mainStream.srcObject = screenStream;
+            mainStream.classList.remove('hidden');
+            document.getElementById('cams-container').classList.add('hidden');
 
             stream.getVideoTracks()[0].onended = () => {
               screenStream = null;
               mainStream.srcObject = null;
-              updateStageLayoutMode();
+              mainStream.classList.add('hidden');
+              document.getElementById('cams-container').classList.remove('hidden');
             };
 
             sendScreenCall();
-            updateStageLayoutMode();
           } catch (err) {
             console.error('Erro ao capturar fonte:', err);
             alert('Não foi possível capturar esta janela.');
@@ -493,15 +493,17 @@ async function startScreenShare() {
         audio: includeAudio
       });
       mainStream.srcObject = screenStream;
+      mainStream.classList.remove('hidden');
+      document.getElementById('cams-container').classList.add('hidden');
 
       screenStream.getVideoTracks()[0].onended = () => {
         screenStream = null;
         mainStream.srcObject = null;
-        updateStageLayoutMode();
+        mainStream.classList.add('hidden');
+        document.getElementById('cams-container').classList.remove('hidden');
       };
 
       sendScreenCall();
-      updateStageLayoutMode();
     } catch(e) {}
   }
 }
@@ -546,11 +548,6 @@ btnSendChat.addEventListener('click', () => {
   chatInput.value = '';
 });
 
-function updateStageLayoutMode() {
-  const hasScreen = !!mainStream.srcObject;
-  stageEl.classList.toggle('camera-focus-mode', !hasScreen);
-}
-
 function attachMainCallEvents(call) {
   call.on('stream', stream => {
     document.getElementById('remote-voice-audio').srcObject = stream;
@@ -573,4 +570,4 @@ document.getElementById('btn-close-notes').addEventListener('click', () => docum
 
 document.getElementById('btn-hangup').addEventListener('click', () => window.location.reload());
 
-updateAuthUI(); 
+updateAuthUI();
