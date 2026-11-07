@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=5.0">
+  <link rel="stylesheet" href="style.css?v=7.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -45,6 +45,17 @@
         <button id="btn-logout" class="btn-cancel" style="padding: 6px 12px;">Sair da Conta</button>
       </div>
 
+      <!-- Atalho Sala Especial (VIP / Admin) -->
+      <div id="vip-shortcut-box" class="lobby-section hidden" style="background: linear-gradient(135deg, rgba(88,101,242,0.15), rgba(237,66,69,0.15)); border: 1px solid #5865f2;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="font-size:16px; color:#fff;">💖 Nosso Cantinho (Sala Exclusiva)</h3>
+            <p style="font-size:12px; color:#b5bac1;">Acesso rápido com todas as ferramentas liberadas.</p>
+          </div>
+          <button id="btn-enter-vip-room" class="btn-primary" style="background:#ed4245;">Entrar Direto 🚀</button>
+        </div>
+      </div>
+
       <div class="lobby-section">
         <label class="lobby-label">Seu Nome de Exibição na Sala:</label>
         <div class="profile-input-row">
@@ -58,7 +69,7 @@
           <h3>🔑 Criar Sala Privada</h3>
           <div class="form-group">
             <label>Nome da Sala:</label>
-            <input type="text" id="create-room-name" placeholder="ex: sala-da-ju">
+            <input type="text" id="create-room-name" placeholder="ex: sala-de-jogos">
           </div>
           <div class="form-group">
             <label>Senha / PIN da Sala (Obrigatório):</label>
@@ -71,7 +82,7 @@
           <h3>🔗 Entrar em uma Sala</h3>
           <div class="form-group">
             <label>Nome da Sala:</label>
-            <input type="text" id="join-room-name" placeholder="ex: sala-da-ju">
+            <input type="text" id="join-room-name" placeholder="ex: sala-de-jogos">
           </div>
           <div class="form-group">
             <label>Senha / PIN da Sala:</label>
@@ -92,7 +103,7 @@
   </div>
 
   <!-- ================= TELA 3: PALCO DA CHAMADA ================= -->
-  <button id="btn-pip-restore" title="Restaurar tamanho normal">✕</button>
+  <button id="btn-pip-restore" class="hidden" title="Restaurar tamanho normal">✕</button>
 
   <header id="main-header">
     <div class="header-left">
@@ -104,12 +115,19 @@
     </div>
 
     <div class="header-right">
-      <button class="btn-icon" id="btn-open-bucket" title="Metas & Planos">📋</button>
+      <!-- Botões Exclusivos VIP -->
+      <button class="btn-icon vip-only hidden" id="btn-open-bucket" title="Metas & Planos">📋</button>
+      <button class="btn-icon vip-only hidden" id="btn-open-roulette" title="Sorteador">🎲</button>
+
+      <!-- Botões Globais -->
+      <button class="btn-icon badge-wrapper" id="btn-open-chat" title="Chat da Sala">
+        💬
+        <span class="unread-dot hidden" id="chat-unread-dot"></span>
+      </button>
       <button class="btn-icon badge-wrapper" id="btn-open-notes" title="Bloco de Notas">
         📝
         <span class="unread-dot hidden" id="notes-unread-dot"></span>
       </button>
-      <button class="btn-icon" id="btn-open-roulette" title="Sorteador">🎲</button>
       <button class="btn-icon" id="btn-open-profile" title="Perfil">👤</button>
       <button class="btn-icon" id="btn-open-settings" title="Configurações & Tema">⚙️</button>
     </div>
@@ -129,7 +147,6 @@
     </div>
 
     <div class="cams-overlay">
-      <!-- Box Local -->
       <div class="cam-box" id="box-local">
         <button id="btn-hide-self-cam" class="btn-cam-action" title="Esconder">👁️</button>
         <div class="speaking-glow-border" id="glow-local"></div>
@@ -143,11 +160,10 @@
         <video id="local-cam" autoplay playsinline muted></video>
         <span class="cam-label" id="label-local">
           <span id="name-tag-local">Você</span>
-          <span id="mute-indicator-local" class="mute-indicator hidden">🔇</span>
+          <span id="mute-indicator-local" class="mute-indicator">🔇</span>
         </span>
       </div>
 
-      <!-- Box Remoto -->
       <div class="cam-box" id="box-remote">
         <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir">⛶</button>
         <div class="speaking-glow-border" id="glow-remote"></div>
@@ -170,7 +186,7 @@
   <audio id="remote-voice-audio" autoplay playsinline></audio>
 
   <footer id="main-footer">
-    <button id="btn-toggle-mic" class="dock-btn">🎤</button>
+    <button id="btn-toggle-mic" class="dock-btn btn-danger">🔇</button>
     <button id="btn-toggle-cam" class="dock-btn">📷</button>
     <button id="btn-screen" class="dock-btn btn-highlight">🖥️</button>
     <button id="btn-popout-stream" class="dock-btn hidden">🗔</button>
@@ -194,11 +210,26 @@
     <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
 
-  <!-- MODAIS -->
+  <!-- DRAWER: CHAT DE TEXTO (NAS SALAS COMUNS) -->
+  <aside id="chat-drawer" class="notes-drawer">
+    <div class="drawer-header">
+      <h3>💬 Chat da Sala</h3>
+      <button id="btn-close-chat" class="btn-sm btn-cancel">✕</button>
+    </div>
+    <div class="drawer-body" style="display:flex; flex-direction:column;">
+      <div id="chat-messages-list" style="flex:1; overflow-y:auto; margin-bottom:10px; display:flex; flex-direction:column; gap:6px;"></div>
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="chat-input" placeholder="Digite uma mensagem..." style="flex:1;">
+        <button id="btn-send-chat" class="btn-sm btn-highlight">Enviar</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MODAIS RESTANTES -->
   <div id="bucket-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 520px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h3>📋 Planos & Listas</h3>
+        <h3>📋 Planos & Listas Exclusivas</h3>
         <button id="btn-close-bucket-top" class="btn-sm btn-cancel">✕</button>
       </div>
       <div id="bucket-categories-bar" class="bucket-tabs-container" style="margin-top:10px;"></div>
@@ -280,6 +311,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.0"></script>
+  <script src="app.js?v=7.0"></script>
 </body>
 </html>
