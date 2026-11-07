@@ -33,6 +33,27 @@ function toggleUserVip(username) {
   renderRoomsManagerList();
 }
 
+function addCustomVipUser() {
+  const input = document.getElementById('input-add-vip');
+  if (!input) return;
+  const username = input.value.trim();
+  if (!username) return;
+
+  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
+  if (!usersDb[username]) {
+    usersDb[username] = "123456"; // Cria a conta para poder logar
+    localStorage.setItem('app_users_db', JSON.stringify(usersDb));
+  }
+
+  let vips = getVipUsers();
+  if (!vips.includes(username)) {
+    vips.push(username);
+    localStorage.setItem('app_vip_users', JSON.stringify(vips));
+  }
+  input.value = '';
+  renderRoomsManagerList();
+}
+
 function isUserVipOrAdmin() {
   if (!currentUser) return false;
   const user = currentUser.username.toLowerCase();
@@ -70,20 +91,33 @@ function renderRoomsManagerList() {
   let html = '';
 
   if (isAdmin) {
-    html += '<div style="margin-bottom:8px; font-weight:bold; font-size:12px; color:#5865f2;">👑 Gerenciar Usuários VIPs:</div>';
-    Object.keys(usersDb).forEach(u => {
-      if (u.toLowerCase() !== ADMIN_USER.toLowerCase()) {
-        const isVip = getVipUsers().includes(u);
-        html += `
-          <div class="room-item-row" style="margin-bottom:4px;">
-            <span>👤 <strong>${u}</strong> ${isVip ? '⭐ VIP' : ''}</span>
-            <button class="btn-sm" style="padding:2px 8px; font-size:10px; background:${isVip ? '#ed4245' : '#3ba55d'};" onclick="toggleUserVip('${u}')">
-              ${isVip ? 'Remover VIP' : 'Tornar VIP'}
-            </button>
-          </div>
-        `;
-      }
-    });
+    html += `
+      <div style="margin-bottom:8px; font-weight:bold; font-size:12px; color:#5865f2;">👑 Gerenciar Usuários VIPs:</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input type="text" id="input-add-vip" placeholder="Digitar nome de usuário..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:4px 8px; border-radius:4px; font-size:12px;">
+        <button class="btn-sm" style="padding:4px 10px; font-size:11px;" onclick="addCustomVipUser()">Tornar VIP</button>
+      </div>
+    `;
+
+    const userKeys = Object.keys(usersDb);
+    if (userKeys.length === 0) {
+      html += '<span style="font-size:11px; color:#949ba4;">Nenhum usuário cadastrado ainda.</span>';
+    } else {
+      userKeys.forEach(u => {
+        if (u.toLowerCase() !== ADMIN_USER.toLowerCase()) {
+          const isVip = getVipUsers().includes(u);
+          html += `
+            <div class="room-item-row" style="margin-bottom:4px;">
+              <span>👤 <strong>${u}</strong> ${isVip ? '⭐ VIP' : ''}</span>
+              <button class="btn-sm" style="padding:2px 8px; font-size:10px; background:${isVip ? '#ed4245' : '#3ba55d'};" onclick="toggleUserVip('${u}')">
+                ${isVip ? 'Remover VIP' : 'Tornar VIP'}
+              </button>
+            </div>
+          `;
+        }
+      });
+    }
+
     html += '<div style="margin:10px 0 6px 0; font-weight:bold; font-size:12px; color:#5865f2;">🔒 Salas Ativas:</div>';
   }
 
@@ -222,16 +256,19 @@ btnCreateRoom.addEventListener('click', () => {
   initPeerConnection(room, pin, true);
 });
 
+// FIX DA VALIDAÇÃO DO PIN NO CLIQUE DE ENTRAR
 btnJoinRoom.addEventListener('click', () => {
   const room = joinRoomName.value.trim().toLowerCase();
   const pin = joinRoomPin.value.trim();
-  if (!room || !pin) return alert('Digite o nome e a senha da sala!');
+  if (!room) return alert('Digite o nome da sala!');
+  if (!pin) return alert('Digite a senha da sala!');
 
   const db = getRoomsDatabase();
   const roomData = db[room];
 
-  if (roomData && String(roomData.pin) !== String(pin)) {
-    return alert('❌ Senha incorreta para esta sala!');
+  // Validação imediata sem mudar de tela se a senha estiver incorreta
+  if (roomData && String(roomData.pin).trim() !== String(pin).trim()) {
+    return alert('❌ Senha incorreta! Digite a senha certa para entrar nesta sala.');
   }
 
   initPeerConnection(room, pin, false);
@@ -301,17 +338,11 @@ function setupDataConnection(conn) {
   targetPeerId = conn.peer;
 
   dataConn.on('open', () => {
-    sendDataMessage({ type: 'HANDSHAKE_PIN', pin: currentRoomPin });
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
   });
 
   dataConn.on('data', data => {
-    if (data.type === 'HANDSHAKE_PIN') {
-      if (String(data.pin).trim() !== String(currentRoomPin).trim()) {
-        alert('❌ Conexão recusada: Senha da sala incorreta!');
-        window.location.reload();
-      }
-    } else if (data.type === 'PROFILE_UPDATE') {
+    if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
       updateProfileUI();
       document.getElementById('status-badge').innerText = '🟢 Conectados';
