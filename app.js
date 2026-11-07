@@ -6,8 +6,14 @@ let peer = null;
 
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
+let savedName = localStorage.getItem('profile_name');
+if (savedName && (savedName.includes('Neném') || savedName.includes('Thay'))) {
+  localStorage.removeItem('profile_name');
+  savedName = '';
+}
+
 let myProfile = {
-  name: localStorage.getItem('profile_name') || 'Júlia 777',
+  name: savedName || '',
   avatar: localStorage.getItem('profile_avatar') || defaultAvatar,
   status: localStorage.getItem('profile_status') || '🟢 Disponível'
 };
