@@ -407,6 +407,7 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
+// TRANSMISSÃO DE TELA INTEGRADA PARA ELECTRON & WEBBROWSER
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -420,6 +421,12 @@ async function startScreenShare() {
     try {
       const sources = await window.electronAPI.getSources();
       screenSourcesList.innerHTML = '';
+
+      if (!sources || sources.length === 0) {
+        alert('Nenhuma janela de aplicativo encontrada para compartilhar.');
+        return;
+      }
+
       sources.forEach(source => {
         const card = document.createElement('div');
         card.className = 'source-item-card';
@@ -429,28 +436,57 @@ async function startScreenShare() {
         `;
         card.addEventListener('click', async () => {
           screenPickerModal.classList.remove('active');
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop', chromeMediaSourceId: source.id,
-                maxWidth: 1920, maxFrameRate: 60
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: source.id,
+                  minWidth: 1280,
+                  maxWidth: 1920,
+                  minHeight: 720,
+                  maxHeight: 1080,
+                  maxFrameRate: 60
+                }
               }
-            }
-          });
-          screenStream = stream;
-          mainStream.srcObject = screenStream;
-          sendScreenCall();
-          updateStageLayoutMode();
+            });
+
+            screenStream = stream;
+            mainStream.srcObject = screenStream;
+
+            stream.getVideoTracks()[0].onended = () => {
+              screenStream = null;
+              mainStream.srcObject = null;
+              updateStageLayoutMode();
+            };
+
+            sendScreenCall();
+            updateStageLayoutMode();
+          } catch (err) {
+            console.error('Erro ao capturar fonte:', err);
+            alert('Não foi possível capturar esta janela.');
+          }
         });
         screenSourcesList.appendChild(card);
       });
+
       screenPickerModal.classList.add('active');
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error('Erro no Electron getSources:', err);
+      alert('Erro ao carregar fontes de tela.');
+    }
   } else {
     try {
       screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       mainStream.srcObject = screenStream;
+
+      screenStream.getVideoTracks()[0].onended = () => {
+        screenStream = null;
+        mainStream.srcObject = null;
+        updateStageLayoutMode();
+      };
+
       sendScreenCall();
       updateStageLayoutMode();
     } catch(e) {}
