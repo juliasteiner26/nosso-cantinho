@@ -1,5 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  getSources: () => ipcRenderer.invoke('GET_SOURCES')
+  getSources: () => ipcRenderer.invoke('GET_SOURCES'),
+
+  // Áudio somente do aplicativo/janela compartilhada
+  startAppAudio: (sourceId) => ipcRenderer.invoke('START_APP_AUDIO', sourceId),
+  stopAppAudio: () => ipcRenderer.invoke('STOP_APP_AUDIO'),
+
+  // Recebe os chunks de PCM. Retorna uma função para remover o listener.
+  onAppAudioChunk: (callback) => {
+    const handler = (_event, chunk) => callback(chunk);
+    ipcRenderer.on('APP_AUDIO_CHUNK', handler);
+    return () => ipcRenderer.removeListener('APP_AUDIO_CHUNK', handler);
+  }
 });

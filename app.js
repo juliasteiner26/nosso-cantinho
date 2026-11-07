@@ -11,6 +11,12 @@ let peer = null;
 let isMicMuted = true;
 let isHostInstance = false;
 
+let micStream = null;
+let screenStream = null;
+let mainCall = null;
+let screenCall = null;
+let dataConn = null;
+
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%235865f2'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
 let myProfile = {
@@ -282,6 +288,27 @@ btnJoinRoom.addEventListener('click', () => {
   initPeerConnection(room, pin, false);
 });
 
+// --- ELEMENTOS DA TRANSMISSÃO ---
+const mainStream = document.getElementById('main-stream');
+const camsContainer = document.getElementById('cams-container');
+const containerScreenVolume = document.getElementById('container-screen-volume');
+const btnToggleMic = document.getElementById('btn-toggle-mic');
+const muteIndicatorLocal = document.getElementById('mute-indicator-local');
+const screenPickerModal = document.getElementById('screen-picker-modal');
+const screenSourcesList = document.getElementById('screen-sources-list');
+
+// Quem ASSISTE: volta para a tela de câmeras quando a transmissão acaba
+function resetRemoteScreenView() {
+  const screenAudioEl = document.getElementById('remote-screen-audio');
+  if (!screenStream) {
+    mainStream.srcObject = null;
+    mainStream.classList.add('hidden');
+    camsContainer.classList.remove('hidden');
+    containerScreenVolume.classList.add('hidden');
+  }
+  screenAudioEl.srcObject = null;
+}
+
 function initPeerConnection(roomName, pin, isHost) {
   currentRoomName = roomName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
   currentRoomPin = String(pin).trim();
@@ -312,16 +339,16 @@ function initPeerConnection(roomName, pin, isHost) {
     if (call.metadata && call.metadata.type === 'screen') {
       call.answer();
       call.on('stream', stream => {
-        const mainStreamEl = document.getElementById('main-stream');
         const screenAudioEl = document.getElementById('remote-screen-audio');
-        
-        mainStreamEl.srcObject = stream;
-        screenAudioEl.srcObject = stream; // Vínculo do áudio da tela
-        
-        mainStreamEl.classList.remove('hidden');
-        document.getElementById('cams-container').classList.add('hidden');
-        document.getElementById('container-screen-volume').classList.remove('hidden');
+
+        mainStream.srcObject = stream;
+        screenAudioEl.srcObject = stream; // Áudio da tela (agora só do app compartilhado)
+
+        mainStream.classList.remove('hidden');
+        camsContainer.classList.add('hidden');
+        containerScreenVolume.classList.remove('hidden');
       });
+      call.on('close', resetRemoteScreenView);
     } else {
       mainCall = call;
       call.answer(getMainCallStream());
@@ -338,13 +365,6 @@ function initiateCallToHost() {
   mainCall = peer.call(targetHostId, getMainCallStream(), { metadata: { type: 'main' } });
   attachMainCallEvents(mainCall);
 }
-
-let micStream = null; let screenStream = null; let mainCall = null; let screenCall = null; let dataConn = null;
-const mainStream = document.getElementById('main-stream');
-const btnToggleMic = document.getElementById('btn-toggle-mic');
-const muteIndicatorLocal = document.getElementById('mute-indicator-local');
-const screenPickerModal = document.getElementById('screen-picker-modal');
-const screenSourcesList = document.getElementById('screen-sources-list');
 
 // CONTROLES DE VOLUME (VOZ & TRANSMISSÃO)
 const remoteVoiceAudio = document.getElementById('remote-voice-audio');
@@ -430,7 +450,7 @@ function updateProfileUI() {
 
 function getMainCallStream() {
   const tracks = [];
-  if (micStream) tracks.push(micStream.getAudioTracks()[0]);
+  if (micStream && micStream.getAudioTracks()[0]) tracks.push(micStream.getAudioTracks()[0]);
   return new MediaStream(tracks);
 }
 
@@ -451,14 +471,198 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-async function startScreenShare() {
+// ===========================================================================
+// ÁUDIO SOMENTE DO APLICATIVO COMPARTILHADO (Electron + Windows)
+//
+// main.js captura o áudio do processo da janela escolhida (WASAPI process
+// loopback) e manda PCM cru pra cá. Aqui o PCM vira uma track de áudio que
+// entra no stream da transmissão no lugar do áudio do sistema inteiro.
+// ===========================================================================
+const PCM_WORKLET_CODE = `
+class PcmPlayer extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this.ch = options.processorOptions.channels;
+    this.cap = Math.floor(sampleRate * 2);              // buffer circular de 2s
+    this.buf = new Float32Array(this.cap * this.ch);
+    this.r = 0; this.w = 0; this.count = 0;
+    this.playing = false;
+    this.prebuffer = Math.floor(sampleRate * 0.06);     // 60ms antes de tocar
+    this.maxLatency = Math.floor(sampleRate * 0.4);     // acima disso, corta o atraso
+    this.keep = Math.floor(sampleRate * 0.12);
+    this.port.onmessage = (e) => this.push(e.data);
+  }
+  push(data) {
+    const ch = this.ch;
+    const frames = Math.floor(data.length / ch);
+    for (let i = 0; i < frames; i++) {
+      for (let c = 0; c < ch; c++) this.buf[this.w * ch + c] = data[i * ch + c];
+      this.w = (this.w + 1) % this.cap;
+      if (this.count < this.cap) this.count++;
+      else this.r = (this.r + 1) % this.cap;
+    }
+    if (this.count > this.maxLatency) {
+      const drop = this.count - this.keep;
+      this.r = (this.r + drop) % this.cap;
+      this.count = this.keep;
+    }
+  }
+  process(inputs, outputs) {
+    const out = outputs[0];
+    const n = out[0].length;
+    const ch = this.ch;
+    if (!this.playing && this.count >= this.prebuffer) this.playing = true;
+    for (let i = 0; i < n; i++) {
+      if (this.playing && this.count > 0) {
+        for (let c = 0; c < out.length; c++) {
+          out[c][i] = this.buf[this.r * ch + Math.min(c, ch - 1)];
+        }
+        this.r = (this.r + 1) % this.cap;
+        this.count--;
+      } else {
+        for (let c = 0; c < out.length; c++) out[c][i] = 0;
+        if (this.playing) this.playing = false;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('pcm-player', PcmPlayer);
+`;
+
+let appAudioCtx = null;
+let appAudioNode = null;
+let appAudioFormat = null;
+let appAudioPending = null;       // sobra de bytes que não fecharam um frame
+let removeAppAudioListener = null;
+
+function pcmToFloat32(chunk, fmt) {
+  let data = new Uint8Array(chunk);
+
+  if (appAudioPending && appAudioPending.length) {
+    const merged = new Uint8Array(appAudioPending.length + data.length);
+    merged.set(appAudioPending, 0);
+    merged.set(data, appAudioPending.length);
+    data = merged;
+  }
+
+  const bytesPerSample = fmt.bits / 8;
+  const frameBytes = bytesPerSample * fmt.channels;
+  const usable = data.length - (data.length % frameBytes);
+  appAudioPending = data.slice(usable);
+  if (usable === 0) return null;
+
+  const view = new DataView(data.buffer, data.byteOffset, usable);
+  const total = usable / bytesPerSample;
+  const out = new Float32Array(total);
+
+  if (fmt.float) {
+    for (let i = 0; i < total; i++) out[i] = view.getFloat32(i * 4, true);
+  } else {
+    for (let i = 0; i < total; i++) out[i] = view.getInt16(i * 2, true) / 32768;
+  }
+  return out;
+}
+
+// Retorna as tracks de áudio do app (ou [] se não for possível)
+async function startAppAudio(sourceId) {
+  if (!window.electronAPI || !window.electronAPI.startAppAudio) return [];
+
+  if (!sourceId.startsWith('window:')) {
+    showToast('Para enviar áudio, compartilhe uma JANELA (tela inteira fica sem áudio).');
+    return [];
+  }
+
+  stopAppAudio();
+
+  // Registra o listener antes de iniciar para não perder os primeiros chunks
+  removeAppAudioListener = window.electronAPI.onAppAudioChunk((chunk) => {
+    if (!appAudioNode || !appAudioFormat) return;
+    const floats = pcmToFloat32(chunk, appAudioFormat);
+    if (floats) appAudioNode.port.postMessage(floats, [floats.buffer]);
+  });
+
+  const res = await window.electronAPI.startAppAudio(sourceId);
+  if (!res || !res.ok) {
+    console.warn('Áudio do app indisponível:', res && res.error);
+    showToast('Não foi possível capturar o áudio desse app. Transmitindo sem áudio.');
+    stopAppAudio();
+    return [];
+  }
+
+  try {
+    appAudioFormat = res.format;
+    appAudioPending = null;
+
+    appAudioCtx = new AudioContext({ sampleRate: res.format.sampleRate });
+    const blobUrl = URL.createObjectURL(new Blob([PCM_WORKLET_CODE], { type: 'application/javascript' }));
+    await appAudioCtx.audioWorklet.addModule(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+
+    appAudioNode = new AudioWorkletNode(appAudioCtx, 'pcm-player', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+      processorOptions: { channels: res.format.channels }
+    });
+
+    const dest = appAudioCtx.createMediaStreamDestination();
+    appAudioNode.connect(dest);
+    await appAudioCtx.resume();
+
+    return dest.stream.getAudioTracks();
+  } catch (err) {
+    console.error('Erro ao montar o áudio do app:', err);
+    showToast('Erro ao preparar o áudio. Transmitindo sem áudio.');
+    stopAppAudio();
+    return [];
+  }
+}
+
+function stopAppAudio() {
+  if (removeAppAudioListener) { removeAppAudioListener(); removeAppAudioListener = null; }
+  if (window.electronAPI && window.electronAPI.stopAppAudio) window.electronAPI.stopAppAudio();
+  if (appAudioNode) { try { appAudioNode.disconnect(); } catch (e) {} appAudioNode = null; }
+  if (appAudioCtx) { appAudioCtx.close().catch(() => {}); appAudioCtx = null; }
+  appAudioFormat = null;
+  appAudioPending = null;
+}
+
+// ===========================================================================
+// TRANSMISSÃO DE TELA
+// ===========================================================================
+function stopScreenShare() {
+  stopAppAudio();
+
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
     screenStream = null;
-    mainStream.srcObject = null;
-    mainStream.classList.add('hidden');
-    document.getElementById('cams-container').classList.remove('hidden');
-    document.getElementById('container-screen-volume').classList.add('hidden');
+  }
+  if (screenCall) {
+    try { screenCall.close(); } catch (e) {}
+    screenCall = null;
+  }
+
+  mainStream.srcObject = null;
+  mainStream.classList.add('hidden');
+  camsContainer.classList.remove('hidden');
+  containerScreenVolume.classList.add('hidden');
+}
+
+function beginScreenShare(stream) {
+  screenStream = stream;
+  mainStream.srcObject = stream;
+  mainStream.muted = true; // você não precisa ouvir o eco da própria transmissão
+  mainStream.classList.remove('hidden');
+  camsContainer.classList.add('hidden');
+
+  stream.getVideoTracks()[0].onended = stopScreenShare;
+  sendScreenCall();
+}
+
+async function startScreenShare() {
+  if (screenStream) {
+    stopScreenShare();
     return;
   }
 
@@ -484,17 +688,16 @@ async function startScreenShare() {
         card.className = 'source-item-card';
         card.innerHTML = `
           <img src="${source.thumbnail}">
-          <span>${source.name}</span>
+          <span></span>
         `;
+        card.querySelector('span').textContent = source.name;
+
         card.addEventListener('click', async () => {
           screenPickerModal.classList.remove('active');
           try {
-            const constraints = {
-              audio: includeAudio ? {
-                mandatory: {
-                  chromeMediaSource: 'desktop'
-                }
-              } : false,
+            // Vídeo SEM áudio do sistema: o áudio vem só do app escolhido
+            const videoStream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
               video: {
                 mandatory: {
                   chromeMediaSource: 'desktop',
@@ -504,27 +707,18 @@ async function startScreenShare() {
                   maxFrameRate: fps
                 }
               }
-            };
+            });
 
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            screenStream = stream;
+            let audioTracks = [];
+            if (includeAudio) audioTracks = await startAppAudio(source.id);
 
-            mainStream.srcObject = screenStream;
-            mainStream.muted = true;
-            mainStream.classList.remove('hidden');
-            document.getElementById('cams-container').classList.add('hidden');
-
-            stream.getVideoTracks()[0].onended = () => {
-              screenStream = null;
-              mainStream.srcObject = null;
-              mainStream.classList.add('hidden');
-              document.getElementById('cams-container').classList.remove('hidden');
-              document.getElementById('container-screen-volume').classList.add('hidden');
-            };
-
-            sendScreenCall();
+            beginScreenShare(new MediaStream([
+              ...videoStream.getVideoTracks(),
+              ...audioTracks
+            ]));
           } catch (err) {
             console.error('Erro ao capturar fonte:', err);
+            stopAppAudio();
             showToast('Não foi possível capturar esta janela.');
           }
         });
@@ -537,26 +731,14 @@ async function startScreenShare() {
       showToast('Erro ao carregar janelas.');
     }
   } else {
+    // Navegador comum (sem Electron): usa o seletor nativo
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({
+      const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { width: { max: width }, height: { max: height }, frameRate: { max: fps } },
         audio: includeAudio
       });
-      mainStream.srcObject = screenStream;
-      mainStream.muted = true;
-      mainStream.classList.remove('hidden');
-      document.getElementById('cams-container').classList.add('hidden');
-
-      screenStream.getVideoTracks()[0].onended = () => {
-        screenStream = null;
-        mainStream.srcObject = null;
-        mainStream.classList.add('hidden');
-        document.getElementById('cams-container').classList.remove('hidden');
-        document.getElementById('container-screen-volume').classList.add('hidden');
-      };
-
-      sendScreenCall();
-    } catch(e) {}
+      beginScreenShare(stream);
+    } catch (e) {}
   }
 }
 
@@ -565,6 +747,11 @@ document.getElementById('btn-close-screen-picker').addEventListener('click', () 
 const btnCloseTop = document.getElementById('btn-close-screen-picker-top');
 if (btnCloseTop) btnCloseTop.addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
+window.addEventListener('beforeunload', stopAppAudio);
+
+// ===========================================================================
+// CHAT
+// ===========================================================================
 const chatDrawer = document.getElementById('chat-drawer');
 const btnOpenChat = document.getElementById('btn-open-chat');
 const btnCloseChat = document.getElementById('btn-close-chat');
@@ -583,7 +770,16 @@ btnCloseChat.addEventListener('click', () => chatDrawer.classList.remove('open')
 function appendChatMessage(author, text) {
   const row = document.createElement('div');
   row.className = 'chat-msg-row';
-  row.innerHTML = `<span class="chat-msg-author">${author}:</span> <span>${text}</span>`;
+
+  const authorEl = document.createElement('span');
+  authorEl.className = 'chat-msg-author';
+  authorEl.textContent = `${author}:`;
+
+  const textEl = document.createElement('span');
+  textEl.textContent = ` ${text}`;
+
+  row.appendChild(authorEl);
+  row.appendChild(textEl);
   chatMessagesList.appendChild(row);
   chatMessagesList.scrollTop = chatMessagesList.scrollHeight;
 
@@ -598,6 +794,10 @@ btnSendChat.addEventListener('click', () => {
   appendChatMessage(myProfile.name || 'Você', text);
   sendDataMessage({ type: 'CHAT_MSG', author: myProfile.name || 'Você', text: text });
   chatInput.value = '';
+});
+
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') btnSendChat.click();
 });
 
 function attachMainCallEvents(call) {

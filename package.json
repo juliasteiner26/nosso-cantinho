@@ -17,9 +17,16 @@
   },
   "build": {
     "appId": "com.nossocantinho.app",
+    "asarUnpack": ["node_modules/loopback-capture/**"],
     "productName": "Nosso Cantinho",
     "win": {
       "target": "portable"
     }
+    
+  },
+  
+  "dependencies": {
+    "loopback-capture": "^4.0.0"
   }
+  
 }
