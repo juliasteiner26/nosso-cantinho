@@ -21,6 +21,15 @@ let myProfile = {
 
 let remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
 
+// NOTIFICAÇÃO SUAVE
+function showToast(msg) {
+  const toast = document.getElementById('toast-notification');
+  if (!toast) return;
+  toast.innerText = msg;
+  toast.classList.remove('hidden');
+  setTimeout(() => toast.classList.add('hidden'), 3500);
+}
+
 function getVipUsers() {
   return JSON.parse(localStorage.getItem('app_vip_users') || '[]');
 }
@@ -188,7 +197,7 @@ function updateAuthUI() {
 btnLogin.addEventListener('click', () => {
   const user = authUsername.value.trim();
   const pass = authPassword.value.trim();
-  if (!user || !pass) return alert('Preencha usuário e senha!');
+  if (!user || !pass) return showToast('Preencha usuário e senha!');
 
   const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
   if (usersDb[user] && usersDb[user] === pass) {
@@ -200,14 +209,14 @@ btnLogin.addEventListener('click', () => {
     localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
     updateAuthUI();
   } else {
-    alert('Usuário ou senha incorretos!');
+    showToast('Usuário ou senha incorretos!');
   }
 });
 
 btnRegister.addEventListener('click', () => {
   const user = authUsername.value.trim();
   const pass = authPassword.value.trim();
-  if (!user || !pass) return alert('Digite usuário e senha para cadastrar!');
+  if (!user || !pass) return showToast('Digite usuário e senha para cadastrar!');
 
   const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
   usersDb[user] = pass;
@@ -215,7 +224,7 @@ btnRegister.addEventListener('click', () => {
 
   currentUser = { username: user };
   localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
-  alert('Conta criada com sucesso!');
+  showToast('Conta criada com sucesso!');
   updateAuthUI();
 });
 
@@ -231,7 +240,7 @@ btnSaveDisplayName.addEventListener('click', () => {
     myProfile.name = val;
     localStorage.setItem('profile_name', val);
     updateProfileUI();
-    alert('Nome de exibição atualizado!');
+    showToast('Nome de exibição atualizado!');
   }
 });
 
@@ -250,8 +259,8 @@ const btnJoinRoom = document.getElementById('btn-join-room');
 btnCreateRoom.addEventListener('click', () => {
   const room = createRoomName.value.trim().toLowerCase();
   const pin = createRoomPin.value.trim();
-  if (!room) return alert('Digite um nome para a sala!');
-  if (!pin) return alert('Defina uma senha/PIN para a sala!');
+  if (!room) return showToast('Digite um nome para a sala!');
+  if (!pin) return showToast('Defina uma senha/PIN para a sala!');
 
   saveRoomToDb(room, pin, currentUser.username);
   initPeerConnection(room, pin, true);
@@ -260,14 +269,15 @@ btnCreateRoom.addEventListener('click', () => {
 btnJoinRoom.addEventListener('click', () => {
   const room = joinRoomName.value.trim().toLowerCase();
   const pin = joinRoomPin.value.trim();
-  if (!room) return alert('Digite o nome da sala!');
-  if (!pin) return alert('Digite a senha da sala!');
+  if (!room) return showToast('Digite o nome da sala!');
+  if (!pin) return showToast('Digite a senha da sala!');
 
   const db = getRoomsDatabase();
   const roomData = db[room];
 
   if (roomData && String(roomData.pin).trim() !== String(pin).trim()) {
-    return alert('❌ Senha incorreta! Digite a senha certa para entrar.');
+    showToast('❌ Senha incorreta! Digite a senha certa.');
+    return;
   }
 
   initPeerConnection(room, pin, false);
@@ -282,6 +292,8 @@ function initPeerConnection(roomName, pin, isHost) {
 
   const isVipRoom = (currentRoomName === VIP_ROOM_NAME);
   document.querySelectorAll('.vip-only').forEach(el => el.classList.toggle('hidden', !isVipRoom));
+
+  if (peer) peer.destroy();
 
   peer = new Peer(myPeerId, {
     config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
@@ -336,13 +348,12 @@ function sendScreenCall() {
   if (targetId) screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
-// CORREÇÃO: Conexão atualiza o status de "Aguardando..." para "Conectados" no evento open do Data Connection
+// RESTAURADO COM DESTRUIÇÃO LIMPA EM CASO DE SENHA ERRADA (SEM TRAVAR A TELA)
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
 
   dataConn.on('open', () => {
-    // Atualiza status do topo imediatamente ao estabelecer conexão
     const badge = document.getElementById('status-badge');
     badge.innerText = '🟢 Conectados';
     badge.classList.add('connected');
@@ -355,17 +366,18 @@ function setupDataConnection(conn) {
     if (data.type === 'HANDSHAKE_PIN') {
       if (isHostInstance && String(data.pin).trim() !== String(currentRoomPin).trim()) {
         sendDataMessage({ type: 'PIN_REJECTED' });
-        setTimeout(() => { if (conn) conn.close(); }, 300);
+        setTimeout(() => { if (conn) conn.close(); }, 200);
       }
     } else if (data.type === 'PIN_REJECTED') {
-      alert('❌ Senha da sala incorreta! Acesso negado pelo Host.');
-      window.location.reload();
+      showToast('❌ Senha da sala incorreta!');
+      if (peer) peer.destroy();
+      lobbyScreen.classList.remove('hidden');
+      const badge = document.getElementById('status-badge');
+      badge.innerText = 'Aguardando...';
+      badge.classList.remove('connected');
     } else if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
       updateProfileUI();
-      const badge = document.getElementById('status-badge');
-      badge.innerText = '🟢 Conectados';
-      badge.classList.add('connected');
     } else if (data.type === 'CHAT_MSG') {
       appendChatMessage(data.author, data.text);
     }
@@ -415,7 +427,7 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-// TRANSMISSÃO DE TELA COM SUPORTE TOTAL A ÁUDIO GLOBAL DO SISTEMA / DISCORD
+// TRANSMISSÃO SEM RETORNO DE ECO LOCAL E SEM CAPTURAR DISCORD SE SELECIONAR JANELA
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -439,7 +451,7 @@ async function startScreenShare() {
       screenSourcesList.innerHTML = '';
 
       if (!sources || sources.length === 0) {
-        alert('Nenhuma janela de aplicativo encontrada para compartilhar.');
+        showToast('Nenhuma janela encontrada.');
         return;
       }
 
@@ -453,7 +465,6 @@ async function startScreenShare() {
         card.addEventListener('click', async () => {
           screenPickerModal.classList.remove('active');
           try {
-            // No Electron, passar chromeMediaSource: 'desktop' ou 'screen' em audio/video permite capturar o áudio global (Discord + Sistema)
             const constraints = {
               audio: includeAudio ? {
                 mandatory: {
@@ -473,7 +484,10 @@ async function startScreenShare() {
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             screenStream = stream;
+
+            // O elemento local recebe o vídeo com muted para NUNCA gerar retorno no seu fone
             mainStream.srcObject = screenStream;
+            mainStream.muted = true;
             mainStream.classList.remove('hidden');
             document.getElementById('cams-container').classList.add('hidden');
 
@@ -487,7 +501,7 @@ async function startScreenShare() {
             sendScreenCall();
           } catch (err) {
             console.error('Erro ao capturar fonte:', err);
-            alert('Não foi possível capturar esta janela.');
+            showToast('Não foi possível capturar esta janela.');
           }
         });
         screenSourcesList.appendChild(card);
@@ -496,7 +510,7 @@ async function startScreenShare() {
       screenPickerModal.classList.add('active');
     } catch (err) {
       console.error('Erro no Electron getSources:', err);
-      alert('Erro ao carregar fontes de tela.');
+      showToast('Erro ao carregar janelas.');
     }
   } else {
     try {
@@ -504,7 +518,8 @@ async function startScreenShare() {
         video: { width: { max: width }, height: { max: height }, frameRate: { max: fps } },
         audio: includeAudio
       });
-      mainStream.srcObject = stream;
+      mainStream.srcObject = screenStream;
+      mainStream.muted = true;
       mainStream.classList.remove('hidden');
       document.getElementById('cams-container').classList.add('hidden');
 

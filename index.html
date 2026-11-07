@@ -4,10 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=15.0">
+  <link rel="stylesheet" href="style.css?v=16.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
+
+  <!-- NOTIFICAÇÃO TOAST CUSTOMIZADA (SEM BLOQUEAR A TELA COM ALERT) -->
+  <div id="toast-notification" class="toast hidden"></div>
 
   <!-- TELA 1: LOGIN / CADASTRO -->
   <div id="auth-screen" class="lobby-backdrop">
@@ -128,7 +131,8 @@
   </header>
 
   <main id="stage">
-    <video id="main-stream" autoplay playsinline class="hidden"></video>
+    <!-- MUTED OBRIGATÓRIO NA TELA LOCAL PARA EVITAR O LOOP DE ECO DAS 1000 VEZES -->
+    <video id="main-stream" autoplay playsinline muted class="hidden"></video>
 
     <div id="volume-hud" class="volume-hud hidden">
       <span id="hud-icon">🎙️</span>
@@ -276,7 +280,7 @@
     </div>
   </div>
 
-  <!-- MODAL DE SELEÇÃO DE TELA COM ÁUDIO DO SISTEMA E DISCORD -->
+  <!-- MODAL DE TRANSMISSÃO -->
   <div id="screen-picker-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 780px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
@@ -296,9 +300,9 @@
 
         <div class="setting-item">
           <label class="toggle-container">
-            <input type="checkbox" id="screen-include-audio" checked>
+            <input type="checkbox" id="screen-include-audio">
             <span class="toggle-checkmark"></span>
-            🔊 Capturar Áudio do Sistema / Discord
+            🔊 Incluir Áudio da Janela (Apenas o App selecionado)
           </label>
         </div>
       </div>
@@ -311,6 +315,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=15.0"></script>
+  <script src="app.js?v=16.0"></script>
 </body>
 </html>

@@ -33,6 +33,16 @@ body {
   overflow: hidden; position: relative;
 }
 
+/* NOTIFICAÇÃO TOAST FLUTUANTE */
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  background: #ed4245; color: #fff; padding: 10px 20px; border-radius: 20px;
+  font-size: 13px; font-weight: bold; z-index: 1000000;
+  box-shadow: 0 4px 15px rgba(237, 66, 69, 0.4);
+  transition: all 0.3s ease;
+}
+.toast.hidden { display: none !important; }
+
 .lobby-backdrop {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -143,7 +153,6 @@ header#main-header {
   object-fit: contain; z-index: 1; pointer-events: auto;
 }
 
-/* CARDS DE CÂMERA E AVATAR NO LAYOUT ÚNICO DEFINITIVO */
 .cams-overlay {
   position: relative !important; z-index: 100 !important;
   display: flex !important; flex-direction: row !important;
