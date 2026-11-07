@@ -573,4 +573,4 @@ document.getElementById('btn-close-notes').addEventListener('click', () => docum
 
 document.getElementById('btn-hangup').addEventListener('click', () => window.location.reload());
 
-updateAuthUI();
+updateAuthUI(); 
