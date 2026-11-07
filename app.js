@@ -9,6 +9,7 @@ let myPeerId = '';
 let targetPeerId = null;
 let peer = null;
 let isMicMuted = true;
+let isHostInstance = false;
 
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%235865f2'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
@@ -41,7 +42,7 @@ function addCustomVipUser() {
 
   const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
   if (!usersDb[username]) {
-    usersDb[username] = "123456"; // Cria a conta para poder logar
+    usersDb[username] = "123456";
     localStorage.setItem('app_users_db', JSON.stringify(usersDb));
   }
 
@@ -256,7 +257,6 @@ btnCreateRoom.addEventListener('click', () => {
   initPeerConnection(room, pin, true);
 });
 
-// FIX DA VALIDAÇÃO DO PIN NO CLIQUE DE ENTRAR
 btnJoinRoom.addEventListener('click', () => {
   const room = joinRoomName.value.trim().toLowerCase();
   const pin = joinRoomPin.value.trim();
@@ -266,9 +266,9 @@ btnJoinRoom.addEventListener('click', () => {
   const db = getRoomsDatabase();
   const roomData = db[room];
 
-  // Validação imediata sem mudar de tela se a senha estiver incorreta
+  // Validação Local (quando na mesma máquina)
   if (roomData && String(roomData.pin).trim() !== String(pin).trim()) {
-    return alert('❌ Senha incorreta! Digite a senha certa para entrar nesta sala.');
+    return alert('❌ Senha incorreta! Digite a senha certa para entrar.');
   }
 
   initPeerConnection(room, pin, false);
@@ -277,6 +277,7 @@ btnJoinRoom.addEventListener('click', () => {
 function initPeerConnection(roomName, pin, isHost) {
   currentRoomName = roomName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
   currentRoomPin = String(pin).trim();
+  isHostInstance = isHost;
   const randomId = Math.random().toString(36).substring(2, 7);
   myPeerId = isHost ? `room-${currentRoomName}-host` : `room-${currentRoomName}-guest-${randomId}`;
 
@@ -326,6 +327,8 @@ const mainStream = document.getElementById('main-stream');
 const stageEl = document.getElementById('stage');
 const btnToggleMic = document.getElementById('btn-toggle-mic');
 const muteIndicatorLocal = document.getElementById('mute-indicator-local');
+const screenPickerModal = document.getElementById('screen-picker-modal');
+const screenSourcesList = document.getElementById('screen-sources-list');
 
 function sendScreenCall() {
   if (!screenStream || !peer) return;
@@ -333,16 +336,27 @@ function sendScreenCall() {
   if (targetId) screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
+// VALIDAÇÃO RÍGIDA DE PIN VIA HANDSHAKE PEERJS (REJEITA CONEXÃO DIRETO)
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
 
   dataConn.on('open', () => {
+    // Envia o PIN para validação no Host
+    sendDataMessage({ type: 'HANDSHAKE_PIN', pin: currentRoomPin });
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
   });
 
   dataConn.on('data', data => {
-    if (data.type === 'PROFILE_UPDATE') {
+    if (data.type === 'HANDSHAKE_PIN') {
+      if (isHostInstance && String(data.pin).trim() !== String(currentRoomPin).trim()) {
+        sendDataMessage({ type: 'PIN_REJECTED' });
+        setTimeout(() => { if (conn) conn.close(); }, 500);
+      }
+    } else if (data.type === 'PIN_REJECTED') {
+      alert('❌ Senha da sala incorreta! Acesso negado pelo Host.');
+      window.location.reload();
+    } else if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
       updateProfileUI();
       document.getElementById('status-badge').innerText = '🟢 Conectados';
@@ -395,6 +409,60 @@ btnToggleMic.addEventListener('click', () => {
   btnToggleMic.classList.toggle('btn-danger', isMicMuted);
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
+
+// TRANSMISSÃO DE TELA (WEB & ELECTRON)
+async function startScreenShare() {
+  if (screenStream) {
+    screenStream.getTracks().forEach(t => t.stop());
+    screenStream = null;
+    mainStream.srcObject = null;
+    updateStageLayoutMode();
+    return;
+  }
+
+  if (window.electronAPI && window.electronAPI.getSources) {
+    try {
+      const sources = await window.electronAPI.getSources();
+      screenSourcesList.innerHTML = '';
+      sources.forEach(source => {
+        const card = document.createElement('div');
+        card.style.cssText = "cursor:pointer; background:#111214; padding:8px; border-radius:6px; text-align:center;";
+        card.innerHTML = `
+          <img src="${source.thumbnail}" style="width:100%; height:100px; object-fit:cover; border-radius:4px;">
+          <span style="font-size:11px; color:#fff; display:block; margin-top:4px;">${source.name}</span>
+        `;
+        card.addEventListener('click', async () => {
+          screenPickerModal.classList.remove('active');
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop', chromeMediaSourceId: source.id,
+                maxWidth: 1920, maxFrameRate: 60
+              }
+            }
+          });
+          screenStream = stream;
+          mainStream.srcObject = screenStream;
+          sendScreenCall();
+          updateStageLayoutMode();
+        });
+        screenSourcesList.appendChild(card);
+      });
+      screenPickerModal.classList.add('active');
+    } catch (err) { console.error(err); }
+  } else {
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      mainStream.srcObject = screenStream;
+      sendScreenCall();
+      updateStageLayoutMode();
+    } catch(e) {}
+  }
+}
+
+document.getElementById('btn-screen').addEventListener('click', startScreenShare);
+document.getElementById('btn-close-screen-picker').addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
 const chatDrawer = document.getElementById('chat-drawer');
 const btnOpenChat = document.getElementById('btn-open-chat');
@@ -455,15 +523,6 @@ document.getElementById('btn-open-bucket').addEventListener('click', (e) => { e.
 document.getElementById('btn-close-bucket-top').addEventListener('click', () => document.getElementById('bucket-modal').classList.remove('active'));
 document.getElementById('btn-open-notes').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('notes-drawer').classList.toggle('open'); });
 document.getElementById('btn-close-notes').addEventListener('click', () => document.getElementById('notes-drawer').classList.remove('open'));
-
-document.getElementById('btn-screen').addEventListener('click', async () => {
-  try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    mainStream.srcObject = screenStream;
-    sendScreenCall();
-    updateStageLayoutMode();
-  } catch(e) {}
-});
 
 document.getElementById('btn-hangup').addEventListener('click', () => window.location.reload());
 
