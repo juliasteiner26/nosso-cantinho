@@ -37,7 +37,6 @@ body {
   overflow: hidden; position: relative;
 }
 
-/* Backdrops & Lobby */
 .lobby-backdrop {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -202,6 +201,15 @@ header#main-header {
 }
 #stage.camera-focus-mode .cam-box { width: var(--remote-cam-width, 680px) !important; max-width: 46vw !important; }
 
+/* FIX DO BUG DO 100% NO TOPO */
+.volume-hud {
+  position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85); padding: 8px 16px; border-radius: 20px;
+  color: #fff; font-size: 14px; font-weight: bold; z-index: 999;
+  display: flex; align-items: center; gap: 8px; pointer-events: none;
+}
+.volume-hud.hidden { display: none !important; }
+
 footer#main-footer {
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
   background: var(--panel-bg); padding: 6px 12px; border-radius: 40px;
@@ -217,7 +225,6 @@ footer#main-footer {
 .dock-btn.btn-highlight { background: var(--accent-color); }
 .dock-btn.btn-danger { background: #ed4245; }
 
-/* Drawers & Chat */
 .notes-drawer {
   position: fixed; top: 52px; right: -360px; width: 340px; height: calc(100vh - 52px);
   background: #14161d; border-left: var(--border-style); z-index: 99999;

@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=7.0">
+  <link rel="stylesheet" href="style.css?v=8.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
 
-  <!-- ================= TELA 1: LOGIN / CADASTRO ================= -->
+  <!-- TELA 1: LOGIN / CADASTRO -->
   <div id="auth-screen" class="lobby-backdrop">
     <div class="lobby-card">
       <div class="lobby-header">
@@ -34,7 +34,7 @@
     </div>
   </div>
 
-  <!-- ================= TELA 2: LOBBY DE SALAS & PAINEL ADMIN ================= -->
+  <!-- TELA 2: LOBBY DE SALAS & PAINEL ADMIN -->
   <div id="lobby-screen" class="lobby-backdrop hidden">
     <div class="lobby-card" style="max-width: 750px;">
       <div class="lobby-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -94,7 +94,7 @@
 
       <div class="lobby-section" style="margin-top: 16px; margin-bottom: 0;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <label class="lobby-label" style="margin:0;">📋 Gerenciador de Salas Ativas:</label>
+          <label class="lobby-label" style="margin:0;">📋 Gerenciador de Salas & Usuários:</label>
           <span id="admin-badge" class="badge hidden" style="background:#ed4245; color:#fff;">👑 Administradora</span>
         </div>
         <div id="rooms-list-container" class="rooms-manager-list"></div>
@@ -102,7 +102,7 @@
     </div>
   </div>
 
-  <!-- ================= TELA 3: PALCO DA CHAMADA ================= -->
+  <!-- TELA 3: PALCO DA CHAMADA -->
   <button id="btn-pip-restore" class="hidden" title="Restaurar tamanho normal">✕</button>
 
   <header id="main-header">
@@ -115,11 +115,9 @@
     </div>
 
     <div class="header-right">
-      <!-- Botões Exclusivos VIP -->
       <button class="btn-icon vip-only hidden" id="btn-open-bucket" title="Metas & Planos">📋</button>
       <button class="btn-icon vip-only hidden" id="btn-open-roulette" title="Sorteador">🎲</button>
 
-      <!-- Botões Globais -->
       <button class="btn-icon badge-wrapper" id="btn-open-chat" title="Chat da Sala">
         💬
         <span class="unread-dot hidden" id="chat-unread-dot"></span>
@@ -141,7 +139,7 @@
       <button id="btn-hide-local-screen-preview" class="btn-cam-action">👁️</button>
     </div>
 
-    <div id="volume-hud" class="volume-hud">
+    <div id="volume-hud" class="volume-hud hidden">
       <span id="hud-icon">🎙️</span>
       <span id="hud-text">100%</span>
     </div>
@@ -210,7 +208,6 @@
     <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
 
-  <!-- DRAWER: CHAT DE TEXTO (NAS SALAS COMUNS) -->
   <aside id="chat-drawer" class="notes-drawer">
     <div class="drawer-header">
       <h3>💬 Chat da Sala</h3>
@@ -225,7 +222,6 @@
     </div>
   </aside>
 
-  <!-- MODAIS RESTANTES -->
   <div id="bucket-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 520px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -311,6 +307,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=7.0"></script>
+  <script src="app.js?v=8.0"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ let currentRoomPin = '';
 let myPeerId = '';
 let targetPeerId = null;
 let peer = null;
-let isMicMuted = true; // ENTRA MUTADO POR PADRÃO
+let isMicMuted = true;
 
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%235865f2'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
@@ -20,9 +20,17 @@ let myProfile = {
 
 let remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Aguardando...' };
 
-// Sistema de Gerenciamento de VIPs (Defina no localStorage ou via Admin)
 function getVipUsers() {
   return JSON.parse(localStorage.getItem('app_vip_users') || '[]');
+}
+
+function toggleUserVip(username) {
+  let vips = getVipUsers();
+  const index = vips.indexOf(username);
+  if (index >= 0) vips.splice(index, 1);
+  else vips.push(username);
+  localStorage.setItem('app_vip_users', JSON.stringify(vips));
+  renderRoomsManagerList();
 }
 
 function isUserVipOrAdmin() {
@@ -56,29 +64,47 @@ function renderRoomsManagerList() {
 
   const db = getRoomsDatabase();
   const rooms = Object.keys(db);
-
-  if (rooms.length === 0) {
-    container.innerHTML = '<span style="font-size:12px; color:#949ba4;">Nenhuma sala criada no momento.</span>';
-    return;
-  }
-
+  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
   const isAdmin = currentUser && currentUser.username.toLowerCase() === ADMIN_USER.toLowerCase();
 
-  rooms.forEach(roomName => {
-    const roomInfo = db[roomName];
-    const isOwner = currentUser && currentUser.username === roomInfo.owner;
+  let html = '';
 
-    const row = document.createElement('div');
-    row.className = 'room-item-row';
-    row.innerHTML = `
-      <span>🔒 <strong>${roomName}</strong> (Criador: ${roomInfo.owner})</span>
-      ${(isAdmin || isOwner) ? `<button class="btn-delete-room" onclick="deleteRoomFromDb('${roomName}')">Excluir</button>` : '<span style="font-size:10px; color:#6d727a;">Protegida</span>'}
-    `;
-    container.appendChild(row);
-  });
+  if (isAdmin) {
+    html += '<div style="margin-bottom:8px; font-weight:bold; font-size:12px; color:#5865f2;">👑 Gerenciar Usuários VIPs:</div>';
+    Object.keys(usersDb).forEach(u => {
+      if (u.toLowerCase() !== ADMIN_USER.toLowerCase()) {
+        const isVip = getVipUsers().includes(u);
+        html += `
+          <div class="room-item-row" style="margin-bottom:4px;">
+            <span>👤 <strong>${u}</strong> ${isVip ? '⭐ VIP' : ''}</span>
+            <button class="btn-sm" style="padding:2px 8px; font-size:10px; background:${isVip ? '#ed4245' : '#3ba55d'};" onclick="toggleUserVip('${u}')">
+              ${isVip ? 'Remover VIP' : 'Tornar VIP'}
+            </button>
+          </div>
+        `;
+      }
+    });
+    html += '<div style="margin:10px 0 6px 0; font-weight:bold; font-size:12px; color:#5865f2;">🔒 Salas Ativas:</div>';
+  }
+
+  if (rooms.length === 0) {
+    html += '<span style="font-size:12px; color:#949ba4;">Nenhuma sala ativa.</span>';
+  } else {
+    rooms.forEach(roomName => {
+      const roomInfo = db[roomName];
+      const isOwner = currentUser && currentUser.username === roomInfo.owner;
+      html += `
+        <div class="room-item-row">
+          <span>🔒 <strong>${roomName}</strong> (${roomInfo.owner})</span>
+          ${(isAdmin || isOwner) ? `<button class="btn-delete-room" onclick="deleteRoomFromDb('${roomName}')">Excluir</button>` : '<span style="font-size:10px; color:#6d727a;">Protegida</span>'}
+        </div>
+      `;
+    });
+  }
+
+  container.innerHTML = html;
 }
 
-// LÓGICA DE TEMA
 let currentTheme = localStorage.getItem('app_theme') || 'streamer';
 function applyTheme(themeName) {
   currentTheme = themeName;
@@ -88,7 +114,6 @@ function applyTheme(themeName) {
 }
 applyTheme(currentTheme);
 
-// DOM Auth & Lobby
 const authScreen = document.getElementById('auth-screen');
 const lobbyScreen = document.getElementById('lobby-screen');
 const authUsername = document.getElementById('auth-username');
@@ -180,7 +205,6 @@ btnEnterVipRoom.addEventListener('click', () => {
   initPeerConnection(VIP_ROOM_NAME, '7777', true);
 });
 
-// CRIAR E ENTRAR EM SALAS
 const createRoomName = document.getElementById('create-room-name');
 const createRoomPin = document.getElementById('create-room-pin');
 const btnCreateRoom = document.getElementById('btn-create-room');
@@ -215,11 +239,10 @@ btnJoinRoom.addEventListener('click', () => {
 
 function initPeerConnection(roomName, pin, isHost) {
   currentRoomName = roomName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  currentRoomPin = pin;
+  currentRoomPin = String(pin).trim();
   const randomId = Math.random().toString(36).substring(2, 7);
   myPeerId = isHost ? `room-${currentRoomName}-host` : `room-${currentRoomName}-guest-${randomId}`;
 
-  // Configura visibilidade das ferramentas VIP vs Comuns
   const isVipRoom = (currentRoomName === VIP_ROOM_NAME);
   document.querySelectorAll('.vip-only').forEach(el => el.classList.toggle('hidden', !isVipRoom));
 
@@ -261,7 +284,6 @@ function initiateCallToHost() {
   attachMainCallEvents(mainCall);
 }
 
-// TRANSMISSÃO & MEDIA (ENTRA MUTADO POR PADRÃO)
 let micStream = null; let screenStream = null; let mainCall = null; let screenCall = null; let dataConn = null;
 const mainStream = document.getElementById('main-stream');
 const stageEl = document.getElementById('stage');
@@ -277,13 +299,23 @@ function sendScreenCall() {
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
+
   dataConn.on('open', () => {
+    sendDataMessage({ type: 'HANDSHAKE_PIN', pin: currentRoomPin });
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
   });
+
   dataConn.on('data', data => {
-    if (data.type === 'PROFILE_UPDATE') {
+    if (data.type === 'HANDSHAKE_PIN') {
+      if (String(data.pin).trim() !== String(currentRoomPin).trim()) {
+        alert('❌ Conexão recusada: Senha da sala incorreta!');
+        window.location.reload();
+      }
+    } else if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
       updateProfileUI();
+      document.getElementById('status-badge').innerText = '🟢 Conectados';
+      document.getElementById('status-badge').classList.add('connected');
     } else if (data.type === 'CHAT_MSG') {
       appendChatMessage(data.author, data.text);
     }
@@ -319,7 +351,6 @@ function getMainCallStream() {
 async function startMicrophone() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    // MUTAR IMEDIATAMENTE APÓS PEGAR A STREAM
     micStream.getAudioTracks().forEach(t => t.enabled = false);
   } catch (e) { console.warn('Sem mic:', e); }
 }
@@ -334,7 +365,6 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-// CHAT DA SALA
 const chatDrawer = document.getElementById('chat-drawer');
 const btnOpenChat = document.getElementById('btn-open-chat');
 const btnCloseChat = document.getElementById('btn-close-chat');
@@ -378,10 +408,11 @@ function updateStageLayoutMode() {
 function attachMainCallEvents(call) {
   call.on('stream', stream => {
     document.getElementById('remote-voice-audio').srcObject = stream;
+    document.getElementById('status-badge').innerText = '🟢 Conectados';
+    document.getElementById('status-badge').classList.add('connected');
   });
 }
 
-// BIND DOS MODAIS
 document.getElementById('theme-select').addEventListener('change', (e) => applyTheme(e.target.value));
 document.getElementById('btn-open-settings').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('settings-modal').classList.add('active'); });
 document.getElementById('btn-close-settings').addEventListener('click', () => document.getElementById('settings-modal').classList.remove('active'));
