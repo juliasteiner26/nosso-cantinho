@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=14.0">
+  <link rel="stylesheet" href="style.css?v=15.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -45,7 +45,6 @@
         <button id="btn-logout" class="btn-cancel" style="padding: 6px 12px;">Sair da Conta</button>
       </div>
 
-      <!-- Atalho Sala Especial (VIP / Admin) -->
       <div id="vip-shortcut-box" class="lobby-section hidden" style="background: linear-gradient(135deg, rgba(88,101,242,0.15), rgba(237,66,69,0.15)); border: 1px solid #5865f2;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
@@ -102,7 +101,7 @@
     </div>
   </div>
 
-  <!-- TELA 3: PALCO DA CHAMADA (LAYOUT ÚNICO DE STREAMING E CÂMERAS) -->
+  <!-- TELA 3: PALCO DA CHAMADA -->
   <header id="main-header">
     <div class="header-left">
       <div class="room-info-badge" id="room-info-badge">
@@ -136,7 +135,6 @@
       <span id="hud-text">100%</span>
     </div>
 
-    <!-- LAYOUT ÚNICO FIXO: CARDS DE USUÁRIOS CENTRALIZADOS -->
     <div class="cams-overlay" id="cams-container">
       <div class="cam-box streamer-card" id="box-local">
         <div class="avatar-placeholder" id="avatar-local">
@@ -278,7 +276,7 @@
     </div>
   </div>
 
-  <!-- MODAL DE TRANSMISSÃO -->
+  <!-- MODAL DE SELEÇÃO DE TELA COM ÁUDIO DO SISTEMA E DISCORD -->
   <div id="screen-picker-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 780px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
@@ -300,7 +298,7 @@
           <label class="toggle-container">
             <input type="checkbox" id="screen-include-audio" checked>
             <span class="toggle-checkmark"></span>
-            🔊 Capturar Áudio do Sistema
+            🔊 Capturar Áudio do Sistema / Discord
           </label>
         </div>
       </div>
@@ -313,6 +311,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=14.0"></script>
+  <script src="app.js?v=15.0"></script>
 </body>
 </html>

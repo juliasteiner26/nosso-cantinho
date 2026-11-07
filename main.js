@@ -21,6 +21,7 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
+// Habilita a captura de áudio do sistema no desktopCapturer do Electron
 ipcMain.handle('GET_SOURCES', async () => {
   try {
     const sources = await desktopCapturer.getSources({

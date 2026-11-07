@@ -19,7 +19,7 @@ let myProfile = {
   status: '🟢 Disponível'
 };
 
-let remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Aguardando...' };
+let remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
 
 function getVipUsers() {
   return JSON.parse(localStorage.getItem('app_vip_users') || '[]');
@@ -336,12 +336,17 @@ function sendScreenCall() {
   if (targetId) screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
-// VALIDAÇÃO RÍGIDA DE PIN VIA HANDSHAKE PEERJS
+// CORREÇÃO: Conexão atualiza o status de "Aguardando..." para "Conectados" no evento open do Data Connection
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
 
   dataConn.on('open', () => {
+    // Atualiza status do topo imediatamente ao estabelecer conexão
+    const badge = document.getElementById('status-badge');
+    badge.innerText = '🟢 Conectados';
+    badge.classList.add('connected');
+
     sendDataMessage({ type: 'HANDSHAKE_PIN', pin: currentRoomPin });
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
   });
@@ -358,8 +363,9 @@ function setupDataConnection(conn) {
     } else if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
       updateProfileUI();
-      document.getElementById('status-badge').innerText = '🟢 Conectados';
-      document.getElementById('status-badge').classList.add('connected');
+      const badge = document.getElementById('status-badge');
+      badge.innerText = '🟢 Conectados';
+      badge.classList.add('connected');
     } else if (data.type === 'CHAT_MSG') {
       appendChatMessage(data.author, data.text);
     }
@@ -409,6 +415,7 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
+// TRANSMISSÃO DE TELA COM SUPORTE TOTAL A ÁUDIO GLOBAL DO SISTEMA / DISCORD
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -446,8 +453,13 @@ async function startScreenShare() {
         card.addEventListener('click', async () => {
           screenPickerModal.classList.remove('active');
           try {
+            // No Electron, passar chromeMediaSource: 'desktop' ou 'screen' em audio/video permite capturar o áudio global (Discord + Sistema)
             const constraints = {
-              audio: includeAudio ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
+              audio: includeAudio ? {
+                mandatory: {
+                  chromeMediaSource: 'desktop'
+                }
+              } : false,
               video: {
                 mandatory: {
                   chromeMediaSource: 'desktop',
@@ -492,7 +504,7 @@ async function startScreenShare() {
         video: { width: { max: width }, height: { max: height }, frameRate: { max: fps } },
         audio: includeAudio
       });
-      mainStream.srcObject = screenStream;
+      mainStream.srcObject = stream;
       mainStream.classList.remove('hidden');
       document.getElementById('cams-container').classList.add('hidden');
 
@@ -551,8 +563,9 @@ btnSendChat.addEventListener('click', () => {
 function attachMainCallEvents(call) {
   call.on('stream', stream => {
     document.getElementById('remote-voice-audio').srcObject = stream;
-    document.getElementById('status-badge').innerText = '🟢 Conectados';
-    document.getElementById('status-badge').classList.add('connected');
+    const badge = document.getElementById('status-badge');
+    badge.innerText = '🟢 Conectados';
+    badge.classList.add('connected');
   });
 }
 
