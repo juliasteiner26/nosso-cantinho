@@ -2,31 +2,55 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space⁷⁷⁷</title>
-  <link rel="stylesheet" href="style.css?v=3.0">
+  <link rel="stylesheet" href="style.css?v=4.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
 
-  <!-- ================= TELA 1: LOBBY DE ENTRADA ================= -->
-  <div id="lobby-screen" class="lobby-backdrop">
+  <!-- ================= TELA 1: LOGIN / CADASTRO ================= -->
+  <div id="auth-screen" class="lobby-backdrop">
     <div class="lobby-card">
       <div class="lobby-header">
         <h2>Space⁷⁷⁷</h2>
-        <p>Salas Privadas & Transmissão de Tela</p>
+        <p>Faça login para acessar o sistema de salas</p>
       </div>
 
-      <!-- Configuração de Perfil Local (Fim dos Conflitos de Nomes) -->
+      <div class="lobby-box" style="margin-bottom: 0;">
+        <div class="form-group">
+          <label>Usuário / Email:</label>
+          <input type="text" id="auth-username" placeholder="Digite seu usuário">
+        </div>
+        <div class="form-group">
+          <label>Senha do Usuário:</label>
+          <input type="password" id="auth-password" placeholder="Digite sua senha">
+        </div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button id="btn-login" class="btn-primary" style="flex:1;">Entrar</button>
+          <button id="btn-register" class="btn-secondary-action" style="flex:1;">Cadastrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TELA 2: LOBBY DE SALAS & PAINEL ADMIN ================= -->
+  <div id="lobby-screen" class="lobby-backdrop hidden">
+    <div class="lobby-card" style="max-width: 750px;">
+      <div class="lobby-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h2>🚀 Space 777</h2>
+          <p id="user-welcome-text">Bem-vinda(o)</p>
+        </div>
+        <button id="btn-logout" class="btn-cancel" style="padding: 6px 12px;">Sair da Conta</button>
+      </div>
+
+      <!-- Configuração do Nome de Exibição -->
       <div class="lobby-section">
-        <label class="lobby-label">Seu Apelido no App:</label>
+        <label class="lobby-label">Seu Nome de Exibição na Sala:</label>
         <div class="profile-input-row">
-          <input type="text" id="lobby-username" placeholder="Digite seu apelido" maxlength="25">
-          <label for="lobby-avatar-input" class="btn-avatar-pick" title="Alterar Foto">
-            <img id="lobby-avatar-preview" src="" alt="Avatar">
-            <span>📷</span>
-          </label>
-          <input type="file" id="lobby-avatar-input" accept="image/*" style="display:none;">
+          <input type="text" id="display-name-input" placeholder="Como você quer aparecer na chamada?">
+          <button id="btn-save-display-name" class="btn-sm btn-highlight">Salvar Nome</button>
         </div>
       </div>
 
@@ -36,11 +60,11 @@
           <h3>🔑 Criar Sala Privada</h3>
           <div class="form-group">
             <label>Nome da Sala:</label>
-            <input type="text" id="create-room-name" placeholder="ex: sala-da-ju-777">
+            <input type="text" id="create-room-name" placeholder="ex: sala-da-ju">
           </div>
           <div class="form-group">
-            <label>PIN da Sala (4 dígitos - Opcional):</label>
-            <input type="password" id="create-room-pin" maxlength="4" placeholder="ex: 7777">
+            <label>Senha / PIN da Sala (Obrigatório):</label>
+            <input type="password" id="create-room-pin" placeholder="Crie um PIN (ex: 7777)">
           </div>
           <button id="btn-create-room" class="btn-primary">🚀 Criar e Entrar</button>
         </div>
@@ -49,74 +73,70 @@
         <div class="lobby-box">
           <h3>🔗 Entrar em uma Sala</h3>
           <div class="form-group">
-            <label>Código/Nome da Sala:</label>
-            <input type="text" id="join-room-name" placeholder="ex: sala-da-ju-777">
+            <label>Nome da Sala:</label>
+            <input type="text" id="join-room-name" placeholder="ex: sala-da-ju">
           </div>
           <div class="form-group">
-            <label>PIN (se a sala exigir):</label>
-            <input type="password" id="join-room-pin" maxlength="4" placeholder="****">
+            <label>Senha / PIN da Sala:</label>
+            <input type="password" id="join-room-pin" placeholder="Digite a senha da sala">
           </div>
           <button id="btn-join-room" class="btn-secondary-action">🔌 Entrar na Sala</button>
+        </div>
+      </div>
+
+      <!-- PAINEL DE SALAS / ADMIN -->
+      <div class="lobby-section" style="margin-top: 16px; margin-bottom: 0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label class="lobby-label" style="margin:0;">📋 Gerenciador de Salas Ativas:</label>
+          <span id="admin-badge" class="badge hidden" style="background:#ed4245; color:#fff;">👑 Administradora</span>
+        </div>
+        <div id="rooms-list-container" class="rooms-manager-list">
+          <!-- As salas serão inseridas dinamicamente pelo JS -->
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ================= TELA 2: SALA DE CHAMADA E TRANSMISSÃO ================= -->
-  
-  <!-- Botão Flutuante de Restaurar PiP (modo Sobrepor do app) -->
+  <!-- ================= TELA 3: PALCO DA CHAMADA ================= -->
   <button id="btn-pip-restore" title="Restaurar tamanho normal">✕</button>
 
-  <!-- Botão Flutuante para Restaurar Própria Câmera Oculta -->
-  <button id="btn-restore-self-cam" class="restore-cam-tab hidden" title="Mostrar minha câmera novamente">
-    👁️ Mostrar Você
-  </button>
-
-  <!-- Barra Superior -->
   <header id="main-header">
     <div class="header-left">
       <div class="room-info-badge" id="room-info-badge">
         <span id="room-name-display">🔒 Sala: --</span>
-        <button id="btn-copy-link" class="btn-copy" title="Copiar Link Direto para WhatsApp">📋 Link</button>
+        <button id="btn-copy-link" class="btn-copy" title="Copiar Link">📋 Link</button>
       </div>
       <span id="status-badge" class="badge">Aguardando...</span>
     </div>
 
-    <!-- Barra de Ações Rápidas -->
     <div class="header-right">
-      <button class="btn-icon" id="btn-open-bucket" title="Nossas Metas & Planos">📋</button>
+      <button class="btn-icon" id="btn-open-bucket" title="Metas & Planos">📋</button>
       <button class="btn-icon badge-wrapper" id="btn-open-notes" title="Bloco de Notas">
         📝
         <span class="unread-dot hidden" id="notes-unread-dot"></span>
       </button>
-      <button class="btn-icon" id="btn-open-roulette" title="Sorteador de Decisões">🎲</button>
-      <button class="btn-icon" id="btn-open-profile" title="Perfil & Personalização">👤</button>
-      <button class="btn-icon" id="btn-open-settings" title="Dispositivos, Áudio & Tema">⚙️</button>
+      <button class="btn-icon" id="btn-open-roulette" title="Sorteador">🎲</button>
+      <button class="btn-icon" id="btn-open-profile" title="Perfil">👤</button>
+      <button class="btn-icon" id="btn-open-settings" title="Configurações & Tema">⚙️</button>
     </div>
   </header>
 
-  <!-- Palco Central (Mantido o Layout de Transmissão que Você Gosta) -->
   <main id="stage" class="camera-focus-mode">
-    
-    <!-- Streams de Transmissão (Remoto e Local) -->
     <video id="main-stream" autoplay playsinline></video>
 
-    <!-- Preview da SUA própria transmissão -->
     <div id="local-screen-preview-wrap" class="hidden">
       <video id="local-screen-stream" autoplay playsinline muted></video>
-      <button id="btn-hide-local-screen-preview" class="btn-cam-action" title="Ocultar minha prévia de tela transmitida">👁️</button>
+      <button id="btn-hide-local-screen-preview" class="btn-cam-action">👁️</button>
     </div>
 
-    <!-- Indicador HUD de Volume -->
     <div id="volume-hud" class="volume-hud">
       <span id="hud-icon">🎙️</span>
       <span id="hud-text">100%</span>
     </div>
 
     <div class="cams-overlay">
-      <!-- Box Local -->
       <div class="cam-box" id="box-local">
-        <button id="btn-hide-self-cam" class="btn-cam-action" title="Esconder minha câmera da minha tela">👁️</button>
+        <button id="btn-hide-self-cam" class="btn-cam-action">👁️</button>
         <div class="speaking-glow-border" id="glow-local"></div>
         <div class="avatar-placeholder" id="avatar-local">
           <img id="avatar-img-local" src="" alt="Avatar Local">
@@ -130,9 +150,8 @@
         </span>
       </div>
 
-      <!-- Box Remoto -->
-      <div class="cam-box" id="box-remote" title="Dois cliques para expandir em tela cheia">
-        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera do participante">⛶</button>
+      <div class="cam-box" id="box-remote">
+        <button id="btn-fullscreen-cam" class="btn-cam-action">⛶</button>
         <div class="speaking-glow-border" id="glow-remote"></div>
         <div class="avatar-placeholder" id="avatar-remote">
           <img id="avatar-img-remote" src="" alt="Avatar Remoto">
@@ -150,144 +169,76 @@
 
   <audio id="remote-voice-audio" autoplay playsinline></audio>
 
-  <!-- Barra Inferior Flutuante (Dock) -->
   <footer id="main-footer">
-    <button id="btn-toggle-mic" class="dock-btn" title="Mutar/Desmutar Microfone">🎤</button>
-    <button id="btn-toggle-cam" class="dock-btn" title="Ligar/Desligar Câmera">📷</button>
-    <button id="btn-screen" class="dock-btn btn-highlight" title="Transmitir Tela">🖥️</button>
+    <button id="btn-toggle-mic" class="dock-btn">🎤</button>
+    <button id="btn-toggle-cam" class="dock-btn">📷</button>
+    <button id="btn-screen" class="dock-btn btn-highlight">🖥️</button>
+    <button id="btn-popout-stream" class="dock-btn hidden">🗔</button>
 
-    <button id="btn-popout-stream" class="dock-btn hidden" title="Abrir a transmissão numa janela separada">🗔</button>
-
-    <div class="volume-container" id="container-mic-volume" title="Volume da voz do participante">
-      <span class="vol-icon" id="mic-vol-icon">🎙️</span>
+    <div class="volume-container" id="container-mic-volume">
+      <span class="vol-icon">🎙️</span>
       <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1">
       <span id="mic-vol-value">100%</span>
     </div>
 
-    <div class="volume-container hidden" id="container-screen-volume" title="Volume da transmissão">
-      <span class="vol-icon" id="screen-vol-icon">🖥️</span>
+    <div class="volume-container hidden" id="container-screen-volume">
+      <span class="vol-icon">🖥️</span>
       <input type="range" id="remote-screen-volume" min="0" max="2" step="0.05" value="1">
       <span id="screen-vol-value">100%</span>
     </div>
 
     <div class="call-timer-badge" id="call-timer">⏱️ 00:00:00</div>
 
-    <button id="btn-pip-mode" class="dock-btn" title="Sobrepor sobre jogos">🗗</button>
-    <button id="btn-fullscreen" class="dock-btn" title="Tela Cheia">⛶</button>
-    <button id="btn-hangup" class="dock-btn btn-danger" title="Sair da Sala">📞</button>
+    <button id="btn-pip-mode" class="dock-btn">🗗</button>
+    <button id="btn-fullscreen" class="dock-btn">⛶</button>
+    <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
 
-  <!-- Modal Metas / Bucket List -->
+  <!-- MODAIS RESTANTES -->
   <div id="bucket-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 520px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-        <h3>📋 Planos & Listas da Sala</h3>
-        <button id="btn-close-bucket-top" class="btn-sm btn-cancel" style="padding: 4px 8px;">✕</button>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>📋 Planos & Listas</h3>
+        <button id="btn-close-bucket-top" class="btn-sm btn-cancel">✕</button>
       </div>
-      <p class="modal-subtitle">Organizar coisas para fazer juntos</p>
-
-      <div style="display:flex; gap:6px; margin-bottom: 12px;">
-        <input type="text" id="new-category-input" placeholder="Nova categoria..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:7px 10px; border-radius:6px; font-size:12px;">
-        <button id="btn-add-category" class="btn-sm btn-highlight">+ Criar</button>
-      </div>
-
-      <div id="bucket-categories-bar" class="bucket-tabs-container"></div>
-
+      <div id="bucket-categories-bar" class="bucket-tabs-container" style="margin-top:10px;"></div>
       <div style="display:flex; gap:6px; margin: 12px 0 8px 0;">
-        <input type="text" id="new-bucket-item-input" placeholder="Adicionar um plano nesta categoria..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px 10px; border-radius:6px; font-size:13px;">
+        <input type="text" id="new-bucket-item-input" placeholder="Adicionar item..." style="flex:1;">
         <button id="btn-add-bucket-item" class="btn-sm btn-highlight">Adicionar</button>
       </div>
-
       <div id="bucket-items-list" class="bucket-items-list"></div>
-
-      <div class="bucket-footer">
-        <span id="bucket-progress-text">0 de 0 concluídos</span>
-        <button id="btn-delete-active-category" class="btn-sm btn-cancel" style="color:#ed4245; font-size:11px; padding:4px 8px;" title="Excluir categoria atual">🗑️ Excluir Categoria</button>
-      </div>
     </div>
   </div>
 
-  <!-- Gaveta Lateral: Bloco de Notas -->
   <aside id="notes-drawer" class="notes-drawer">
     <div class="drawer-header">
-      <h3>📝 Bloco de Notas da Sala</h3>
+      <h3>📝 Bloco de Notas</h3>
       <button id="btn-close-notes" class="btn-sm btn-cancel">✕</button>
     </div>
     <div class="drawer-body">
-      <textarea id="shared-notes-area" placeholder="Digite recadinhos, códigos ou lembretes aqui... Sincroniza em tempo real!"></textarea>
-      <span class="sync-status" id="notes-sync-status">🟢 Sincronizado</span>
+      <textarea id="shared-notes-area" placeholder="Notas em tempo real..."></textarea>
     </div>
   </aside>
 
-  <!-- Modal: Sorteador de Decisões -->
   <div id="roulette-modal" class="modal-backdrop">
     <div class="modal-content">
-      <h3>🎲 Sorteador de Decisões</h3>
-      <p class="modal-subtitle">Decidir o que jogar ou assistir</p>
-      
-      <div class="form-group">
-        <label>Opções (uma por linha):</label>
-        <textarea id="roulette-options-input" rows="4" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px; resize:none;">Valorant&#10;GTA RP&#10;Assistir Filme&#10;Minecraft</textarea>
-      </div>
-
+      <h3>🎲 Sorteador</h3>
+      <textarea id="roulette-options-input" rows="4">Valorant&#10;GTA RP&#10;Filme</textarea>
       <div class="roulette-result" id="roulette-result-display">🎯 Clique em Sortear</div>
-
       <div class="modal-actions">
-        <button id="btn-spin-roulette" class="btn-sm btn-highlight">🎰 Sortear Agora</button>
+        <button id="btn-spin-roulette" class="btn-sm btn-highlight">Sortear</button>
         <button id="btn-close-roulette" class="btn-sm btn-cancel">Fechar</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Perfil & Personalização -->
   <div id="profile-modal" class="modal-backdrop">
     <div class="modal-content">
-      <h3>👤 Perfil & Personalização</h3>
-      <p class="modal-subtitle">Altere suas informações que aparecem para as outras pessoas</p>
-
+      <h3>👤 Perfil</h3>
       <div class="form-group">
-        <label for="profile-name-input">Seu Apelido / Nome:</label>
-        <input type="text" id="profile-name-input" maxlength="25">
+        <label>Nome de Exibição:</label>
+        <input type="text" id="profile-name-input">
       </div>
-
-      <div class="form-group">
-        <label for="profile-status-input">Seu Status Atual:</label>
-        <input type="text" id="profile-status-input" placeholder="Ex: jogando, assistindo..." maxlength="40">
-      </div>
-
-      <div class="form-group">
-        <label for="cam-size-slider">Tamanho da Câmera: <span id="cam-size-value">680px</span></label>
-        <input type="range" id="cam-size-slider" min="300" max="1100" step="20" value="680" style="width: 100%; cursor: pointer;">
-      </div>
-
-      <div class="form-group">
-        <label>Plano de Fundo do Palco:</label>
-        <div style="display:flex; gap:8px;">
-          <label for="bg-file-input" class="btn-sm btn-upload" style="flex:1; justify-content:center; cursor:pointer;">🖼️ Escolher Papel de Parede</label>
-          <input type="file" id="bg-file-input" accept="image/*" style="display: none;">
-          <button id="btn-reset-bg" class="btn-sm btn-cancel" title="Restaurar fundo padrão">↺</button>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Atalho Push-to-Mute Local (Navegador):</label>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button id="btn-record-key" class="btn-sm btn-secondary" style="flex:1; justify-content:center;">Gravar Atalho (Atual: Tecla M)</button>
-          <button id="btn-reset-key" class="btn-sm btn-cancel" title="Restaurar padrão">↺</button>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Foto de Perfil:</label>
-        <div class="avatar-preview-wrapper">
-          <img id="profile-preview-img" src="" alt="Prévia">
-          <div class="avatar-upload-btns">
-            <label for="profile-file-input" class="btn-sm btn-upload">📁 Escolher Foto</label>
-            <input type="file" id="profile-file-input" accept="image/*" style="display: none;">
-          </div>
-        </div>
-      </div>
-
       <div class="modal-actions">
         <button id="btn-save-profile" class="btn-sm btn-highlight">Salvar</button>
         <button id="btn-close-profile" class="btn-sm btn-cancel">Fechar</button>
@@ -295,80 +246,40 @@
     </div>
   </div>
 
-  <!-- Modal: Configurações Técnicas & Tema -->
   <div id="settings-modal" class="modal-backdrop">
     <div class="modal-content">
       <h3>⚙️ Configurações & Dispositivos</h3>
-      <p class="modal-subtitle">Escolha o visual do app e seus equipamentos de áudio/vídeo</p>
-
-      <!-- IDEIA 1: Seletor de Tema em Tempo Real -->
-      <div class="form-group" style="margin-bottom: 16px;">
-        <label>🎨 Visual / Tema do App:</label>
-        <select id="theme-select" class="device-select" style="font-weight: bold; color: #00b0f4;">
-          <option value="streamer">🌌 Opção 1: Dark Streamer (Discord / Twitch)</option>
-          <option value="minimalist">✨ Opção 2: Minimalista & Moderno (Meet / Arc)</option>
+      <div class="form-group">
+        <label>🎨 Tema do App:</label>
+        <select id="theme-select" class="device-select">
+          <option value="streamer">🌌 Visual Dark Streamer (Discord/Twitch)</option>
+          <option value="minimalist">✨ Visual Minimalista (Meet/Arc)</option>
         </select>
       </div>
-
       <div class="form-group">
         <label>Microfone:</label>
-        <select id="mic-select" class="device-select"><option value="">Carregando microfones...</option></select>
+        <select id="mic-select" class="device-select"></select>
       </div>
-
       <div class="form-group">
         <label>Câmera:</label>
-        <select id="camera-select" class="device-select"><option value="">Carregando câmeras...</option></select>
+        <select id="camera-select" class="device-select"></select>
       </div>
-
-      <div class="form-group">
-        <label>Saída / Fone:</label>
-        <select id="audio-output-select" class="device-select"><option value="">Carregando saídas...</option></select>
-      </div>
-
-      <div class="form-group" style="margin-top: 6px;">
-        <label>Espelhamento da Minha Imagem:</label>
-        <button class="btn-sm btn-secondary" id="btn-toggle-mirror-my-cam" style="width: 100%; justify-content: center;">
-          🪞 Espelhar Minha Câmera: Desativado
-        </button>
-      </div>
-
-      <div style="display:flex; gap:8px; margin-top: 10px;">
-        <button class="btn-sm btn-toggle-on" id="btn-noise-suppression" style="flex:1;">✨ Supressão: ON</button>
-        <button class="btn-sm btn-secondary" id="btn-low-gpu" style="flex:1;">⚡ Modo Leve: OFF</button>
-      </div>
-
-      <div class="modal-actions" style="margin-top: 16px;">
+      <div class="modal-actions">
         <button id="btn-close-settings" class="btn-sm btn-cancel">Concluir</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Transmissão de Tela (Desktop) -->
   <div id="screen-picker-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 650px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap: 8px; flex-wrap: wrap;">
-        <h3>🖥️ Escolha o que transmitir</h3>
-        <select id="stream-quality-select" class="device-select" style="width: auto;">
-          <option value="1080p60">1080p 60fps</option>
-          <option value="720p30">720p 30fps</option>
-        </select>
-      </div>
-
-      <div class="form-group" style="margin-top: 10px;">
-        <label for="screen-audio-select">🔊 Áudio da transmissão (Jogo / Sistema):</label>
-        <select id="screen-audio-select" class="device-select">
-          <option value="">🔇 Sem áudio</option>
-        </select>
-      </div>
-
-      <p class="modal-subtitle">Selecione uma janela de aplicativo ou a tela inteira</p>
-      <div id="screen-sources-list" class="sources-grid"></div>
-      <div class="modal-actions" style="margin-top: 16px;">
+      <h3>🖥️ Transmitir Tela</h3>
+      <div id="screen-sources-list" class="sources-grid" style="margin-top:10px;"></div>
+      <div class="modal-actions" style="margin-top:16px;">
         <button id="btn-close-screen-picker" class="btn-sm btn-cancel">Cancelar</button>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=3.0"></script>
+  <script src="app.js?v=4.0"></script>
 </body>
 </html>
