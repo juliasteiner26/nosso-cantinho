@@ -76,11 +76,24 @@ ipcMain.handle('START_APP_AUDIO', async (event, sourceId) => {
     const sender = event.sender;
 
     capture = new LoopbackCapture();
-    // true = inclui a árvore de processos (necessário p/ navegadores e jogos
-    // que tocam o som em processos filhos)
-    capture.start(pid, true, (chunk) => {
+
+    const onData = (chunk) => {
       if (!sender.isDestroyed()) sender.send('APP_AUDIO_CHUNK', chunk);
-    });
+    };
+
+    try {
+      // Versão nova da lib: start(pid, includeProcessTree, onData)
+      // true = inclui a árvore de processos (navegadores e jogos tocam o som
+      // em processos filhos)
+      capture.start(pid, true, onData);
+    } catch (e) {
+      if (String(e.message).includes('Expected start(processId')) {
+        // Versão antiga da lib: start(pid, onData)
+        capture.start(pid, onData);
+      } else {
+        throw e;
+      }
+    }
 
     return { ok: true, pid, format: APP_AUDIO_FORMAT };
   } catch (err) {
