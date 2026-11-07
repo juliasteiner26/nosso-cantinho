@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=16.0">
+  <link rel="stylesheet" href="style.css?v=17.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
 
-  <!-- NOTIFICAÇÃO TOAST CUSTOMIZADA (SEM BLOQUEAR A TELA COM ALERT) -->
+  <!-- NOTIFICAÇÃO TOAST FLUTUANTE -->
   <div id="toast-notification" class="toast hidden"></div>
 
   <!-- TELA 1: LOGIN / CADASTRO -->
@@ -131,8 +131,10 @@
   </header>
 
   <main id="stage">
-    <!-- MUTED OBRIGATÓRIO NA TELA LOCAL PARA EVITAR O LOOP DE ECO DAS 1000 VEZES -->
     <video id="main-stream" autoplay playsinline muted class="hidden"></video>
+    
+    <!-- ÁUDIO DA TRANSMISSÃO DA OUTRA PESSOA -->
+    <audio id="remote-screen-audio" autoplay playsinline></audio>
 
     <div id="volume-hud" class="volume-hud hidden">
       <span id="hud-icon">🎙️</span>
@@ -179,10 +181,18 @@
     <button id="btn-toggle-cam" class="dock-btn">📷</button>
     <button id="btn-screen" class="dock-btn btn-highlight">🖥️</button>
 
+    <!-- CONTROLE DE VOLUME DO MICROFONE DA OUTRA PESSOA -->
     <div class="volume-container" id="container-mic-volume">
-      <span class="vol-icon">🎙️</span>
-      <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1">
+      <span class="vol-icon" title="Volume da Voz">🎙️</span>
+      <input type="range" id="remote-mic-volume" min="0" max="1" step="0.05" value="1">
       <span id="mic-vol-value">100%</span>
+    </div>
+
+    <!-- NOVO CONTROLE DE VOLUME DA TRANSMISSÃO DA TELA -->
+    <div class="volume-container hidden" id="container-screen-volume">
+      <span class="vol-icon" title="Volume da Transmissão">🖥️</span>
+      <input type="range" id="remote-screen-volume" min="0" max="1" step="0.05" value="1">
+      <span id="screen-vol-value">100%</span>
     </div>
 
     <div class="call-timer-badge" id="call-timer">⏱️ 00:00:00</div>
@@ -300,9 +310,9 @@
 
         <div class="setting-item">
           <label class="toggle-container">
-            <input type="checkbox" id="screen-include-audio">
+            <input type="checkbox" id="screen-include-audio" checked>
             <span class="toggle-checkmark"></span>
-            🔊 Incluir Áudio da Janela (Apenas o App selecionado)
+            🔊 Incluir Áudio da Transmissão
           </label>
         </div>
       </div>
@@ -315,6 +325,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=16.0"></script>
+  <script src="app.js?v=17.0"></script>
 </body>
 </html>

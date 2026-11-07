@@ -21,7 +21,6 @@ let myProfile = {
 
 let remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
 
-// NOTIFICAÇÃO SUAVE
 function showToast(msg) {
   const toast = document.getElementById('toast-notification');
   if (!toast) return;
@@ -314,9 +313,14 @@ function initPeerConnection(roomName, pin, isHost) {
       call.answer();
       call.on('stream', stream => {
         const mainStreamEl = document.getElementById('main-stream');
+        const screenAudioEl = document.getElementById('remote-screen-audio');
+        
         mainStreamEl.srcObject = stream;
+        screenAudioEl.srcObject = stream; // Vínculo do áudio da tela
+        
         mainStreamEl.classList.remove('hidden');
         document.getElementById('cams-container').classList.add('hidden');
+        document.getElementById('container-screen-volume').classList.remove('hidden');
       });
     } else {
       mainCall = call;
@@ -342,13 +346,33 @@ const muteIndicatorLocal = document.getElementById('mute-indicator-local');
 const screenPickerModal = document.getElementById('screen-picker-modal');
 const screenSourcesList = document.getElementById('screen-sources-list');
 
+// CONTROLES DE VOLUME (VOZ & TRANSMISSÃO)
+const remoteVoiceAudio = document.getElementById('remote-voice-audio');
+const remoteMicVolumeSlider = document.getElementById('remote-mic-volume');
+const micVolValueLabel = document.getElementById('mic-vol-value');
+
+const remoteScreenAudio = document.getElementById('remote-screen-audio');
+const remoteScreenVolumeSlider = document.getElementById('remote-screen-volume');
+const screenVolValueLabel = document.getElementById('screen-vol-value');
+
+remoteMicVolumeSlider.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  remoteVoiceAudio.volume = val;
+  micVolValueLabel.innerText = `${Math.round(val * 100)}%`;
+});
+
+remoteScreenVolumeSlider.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  remoteScreenAudio.volume = val;
+  screenVolValueLabel.innerText = `${Math.round(val * 100)}%`;
+});
+
 function sendScreenCall() {
   if (!screenStream || !peer) return;
   const targetId = targetPeerId || (dataConn ? dataConn.peer : null);
   if (targetId) screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
-// RESTAURADO COM DESTRUIÇÃO LIMPA EM CASO DE SENHA ERRADA (SEM TRAVAR A TELA)
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
@@ -427,7 +451,6 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-// TRANSMISSÃO SEM RETORNO DE ECO LOCAL E SEM CAPTURAR DISCORD SE SELECIONAR JANELA
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -435,6 +458,7 @@ async function startScreenShare() {
     mainStream.srcObject = null;
     mainStream.classList.add('hidden');
     document.getElementById('cams-container').classList.remove('hidden');
+    document.getElementById('container-screen-volume').classList.add('hidden');
     return;
   }
 
@@ -485,7 +509,6 @@ async function startScreenShare() {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             screenStream = stream;
 
-            // O elemento local recebe o vídeo com muted para NUNCA gerar retorno no seu fone
             mainStream.srcObject = screenStream;
             mainStream.muted = true;
             mainStream.classList.remove('hidden');
@@ -496,6 +519,7 @@ async function startScreenShare() {
               mainStream.srcObject = null;
               mainStream.classList.add('hidden');
               document.getElementById('cams-container').classList.remove('hidden');
+              document.getElementById('container-screen-volume').classList.add('hidden');
             };
 
             sendScreenCall();
@@ -528,6 +552,7 @@ async function startScreenShare() {
         mainStream.srcObject = null;
         mainStream.classList.add('hidden');
         document.getElementById('cams-container').classList.remove('hidden');
+        document.getElementById('container-screen-volume').classList.add('hidden');
       };
 
       sendScreenCall();
@@ -577,7 +602,7 @@ btnSendChat.addEventListener('click', () => {
 
 function attachMainCallEvents(call) {
   call.on('stream', stream => {
-    document.getElementById('remote-voice-audio').srcObject = stream;
+    remoteVoiceAudio.srcObject = stream;
     const badge = document.getElementById('status-badge');
     badge.innerText = '🟢 Conectados';
     badge.classList.add('connected');

@@ -33,7 +33,6 @@ body {
   overflow: hidden; position: relative;
 }
 
-/* NOTIFICAÇÃO TOAST FLUTUANTE */
 .toast {
   position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
   background: #ed4245; color: #fff; padding: 10px 20px; border-radius: 20px;
@@ -251,6 +250,17 @@ header#main-header {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* CONTROLES DESLIZANTES DE VOLUME NO RODAPÉ */
+.volume-container {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(24, 26, 36, 0.85); padding: 4px 12px;
+  border-radius: 20px; border: 1px solid rgba(255,255,255,0.08);
+}
+.volume-container input[type=range] {
+  width: 90px; accent-color: var(--accent-color); cursor: pointer;
+}
+.volume-container span { font-size: 11px; font-weight: bold; color: #fff; }
 
 .volume-hud {
   position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
