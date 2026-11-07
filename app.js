@@ -266,7 +266,6 @@ btnJoinRoom.addEventListener('click', () => {
   const db = getRoomsDatabase();
   const roomData = db[room];
 
-  // Validação Local (quando na mesma máquina)
   if (roomData && String(roomData.pin).trim() !== String(pin).trim()) {
     return alert('❌ Senha incorreta! Digite a senha certa para entrar.');
   }
@@ -336,13 +335,11 @@ function sendScreenCall() {
   if (targetId) screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
-// VALIDAÇÃO RÍGIDA DE PIN VIA HANDSHAKE PEERJS (REJEITA CONEXÃO DIRETO)
 function setupDataConnection(conn) {
   dataConn = conn;
   targetPeerId = conn.peer;
 
   dataConn.on('open', () => {
-    // Envia o PIN para validação no Host
     sendDataMessage({ type: 'HANDSHAKE_PIN', pin: currentRoomPin });
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
   });
@@ -351,7 +348,7 @@ function setupDataConnection(conn) {
     if (data.type === 'HANDSHAKE_PIN') {
       if (isHostInstance && String(data.pin).trim() !== String(currentRoomPin).trim()) {
         sendDataMessage({ type: 'PIN_REJECTED' });
-        setTimeout(() => { if (conn) conn.close(); }, 500);
+        setTimeout(() => { if (conn) conn.close(); }, 300);
       }
     } else if (data.type === 'PIN_REJECTED') {
       alert('❌ Senha da sala incorreta! Acesso negado pelo Host.');
@@ -410,7 +407,6 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-// TRANSMISSÃO DE TELA (WEB & ELECTRON)
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -426,10 +422,10 @@ async function startScreenShare() {
       screenSourcesList.innerHTML = '';
       sources.forEach(source => {
         const card = document.createElement('div');
-        card.style.cssText = "cursor:pointer; background:#111214; padding:8px; border-radius:6px; text-align:center;";
+        card.className = 'source-item-card';
         card.innerHTML = `
-          <img src="${source.thumbnail}" style="width:100%; height:100px; object-fit:cover; border-radius:4px;">
-          <span style="font-size:11px; color:#fff; display:block; margin-top:4px;">${source.name}</span>
+          <img src="${source.thumbnail}">
+          <span>${source.name}</span>
         `;
         card.addEventListener('click', async () => {
           screenPickerModal.classList.remove('active');

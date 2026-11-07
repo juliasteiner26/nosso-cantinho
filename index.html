@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=10.0">
+  <link rel="stylesheet" href="style.css?v=11.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -169,7 +169,7 @@
           <div class="avatar-circle">
             <img id="avatar-img-remote" src="" alt="Avatar Remoto">
           </div>
-          <span class="avatar-name" id="avatar-name-remote">Aguardando...</span>
+          <span class="avatar-name" id="avatar-name-remote">Convidado</span>
           <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
         </div>
         <video id="remote-cam" autoplay playsinline></video>
@@ -257,7 +257,7 @@
         <button id="btn-close-roulette" class="btn-sm btn-cancel">Fechar</button>
       </div>
     </div>
-  </div>
+  </aside>
 
   <div id="profile-modal" class="modal-backdrop">
     <div class="modal-content">
@@ -298,15 +298,15 @@
   </div>
 
   <div id="screen-picker-modal" class="modal-backdrop">
-    <div class="modal-content" style="max-width: 650px;">
-      <h3>🖥️ Transmitir Tela</h3>
-      <div id="screen-sources-list" class="sources-grid" style="margin-top:10px;"></div>
-      <div class="modal-actions" style="margin-top:16px;">
+    <div class="modal-content" style="max-width: 680px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
+      <h3>🖥️ Selecionar Janela / Tela</h3>
+      <div id="screen-sources-list" class="sources-grid"></div>
+      <div class="modal-actions" style="margin-top: 16px;">
         <button id="btn-close-screen-picker" class="btn-sm btn-cancel">Cancelar</button>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=10.0"></script>
+  <script src="app.js?v=11.0"></script>
 </body>
 </html>
