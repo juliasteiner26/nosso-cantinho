@@ -2,10 +2,12 @@
 let currentRoomName = '';
 let currentRoomPin = '';
 let myPeerId = '';
+let targetPeerId = null; // Registra o ID exato da pessoa conectada
 let peer = null;
 
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
+// Limpa resquícios de nomes antigos se existirem no localStorage
 let savedName = localStorage.getItem('profile_name');
 if (savedName && (savedName.includes('Neném') || savedName.includes('Thay'))) {
   localStorage.removeItem('profile_name');
@@ -24,7 +26,7 @@ let remoteProfile = {
   status: 'Aguardando...'
 };
 
-// IDEIA 1: Seletor de Tema
+// Seletor de Tema
 let currentTheme = localStorage.getItem('app_theme') || 'streamer';
 function applyTheme(themeName) {
   currentTheme = themeName;
@@ -73,14 +75,14 @@ if (themeSelect) {
   themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
 }
 
-// IDEIA 2: Suporte a Entrar via Link Direto da URL (?sala=nome)
+// Entrar via Link Direto da URL (?sala=nome)
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('sala') || urlParams.get('room');
 if (roomFromUrl && joinRoomName) {
   joinRoomName.value = roomFromUrl;
 }
 
-// Inicializar Conexão PeerJS em Sala Privada
+// Conexão PeerJS
 function initPeerConnection(roomName, isHostCall) {
   currentRoomName = roomName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
   const randomId = Math.random().toString(36).substring(2, 7);
@@ -144,6 +146,7 @@ function initPeerConnection(roomName, isHostCall) {
 
 function initiateCallToHost() {
   const targetHostId = `room-${currentRoomName}-host`;
+  targetPeerId = targetHostId;
   const activeStream = getMainCallStream();
   if (mainCall) { try { mainCall.close(); } catch(e) {} }
   const conn = peer.connect(targetHostId);
@@ -152,7 +155,7 @@ function initiateCallToHost() {
   attachMainCallEvents(mainCall);
 }
 
-// IDEIA 3: Botões de Criar e Entrar com PIN
+// Botões do Lobby
 if (btnCreateRoom) {
   btnCreateRoom.addEventListener('click', () => {
     const room = createRoomName.value.trim();
@@ -175,7 +178,7 @@ if (btnJoinRoom) {
   });
 }
 
-// Copiar Link Direto
+// Copiar Link
 if (btnCopyLink) {
   btnCopyLink.addEventListener('click', () => {
     const link = `${window.location.origin}${window.location.pathname}?sala=${currentRoomName}`;
@@ -1106,14 +1109,13 @@ cameraSelect.addEventListener('change', () => {
   }
 });
 
-// Transmissão de Tela (Browser Nativo / Electron)
+// Transmissão de Tela (Browser / Electron)
 async function toggleScreenShare() {
   if (isScreenSharing) {
     stopScreenSharing();
     return;
   }
 
-  // Se estiver no App Desktop Electron
   if (window.electronAPI && window.electronAPI.getSources) {
     try {
       const sources = await window.electronAPI.getSources();
@@ -1134,7 +1136,6 @@ async function toggleScreenShare() {
       screenPickerModal.classList.add('active');
     } catch (err) { console.error('Erro fontes:', err); }
   } else {
-    // Se estiver no Navegador Web (Chrome, Opera GX, Celular)
     try {
       const isHighQuality = (streamQualitySelect ? streamQualitySelect.value === '1080p60' : true);
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1144,7 +1145,7 @@ async function toggleScreenShare() {
       screenStream = displayStream;
       handleStreamStart(screenStream);
     } catch (err) {
-      console.warn('Transmissão cancelada ou não suportada:', err);
+      console.warn('Transmissão cancelada:', err);
     }
   }
 }
@@ -1284,9 +1285,16 @@ function getMainCallStream() {
   return new MediaStream(tracks);
 }
 
+// CORREÇÃO CRÍTICA: Envia a transmissão de tela diretamente para o targetPeerId exato da pessoa
 function sendScreenCall() {
   if (!isScreenSharing || !screenStream || !peer) return;
-  const targetId = `room-${currentRoomName}-host`;
+  
+  const targetId = targetPeerId || (dataConn ? dataConn.peer : null);
+  if (!targetId) {
+    console.warn('Nenhum participante encontrado na sala para enviar a transmissão.');
+    return;
+  }
+
   screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
@@ -1296,6 +1304,8 @@ function sendDataMessage(data) {
 
 function setupDataConnection(conn) {
   dataConn = conn;
+  targetPeerId = conn.peer; // Guarda o ID do participante remoto para a transmissão de tela
+
   dataConn.on('open', () => {
     sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
     sendDataMessage({ type: 'NOTES_UPDATE', text: sharedNotesArea.value });
