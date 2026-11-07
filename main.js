@@ -21,12 +21,11 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
-// CAPTURA DE TELA DO ELECTRON (FONTE DE JANELAS E TELAS)
 ipcMain.handle('GET_SOURCES', async () => {
   try {
     const sources = await desktopCapturer.getSources({
       types: ['window', 'screen'],
-      thumbnailSize: { width: 400, height: 225 }
+      thumbnailSize: { width: 480, height: 270 }
     });
 
     return sources.map(source => ({
@@ -42,7 +41,6 @@ ipcMain.handle('GET_SOURCES', async () => {
 
 app.whenReady().then(() => {
   createWindow();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

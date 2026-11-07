@@ -407,7 +407,7 @@ btnToggleMic.addEventListener('click', () => {
   muteIndicatorLocal.classList.toggle('hidden', !isMicMuted);
 });
 
-// TRANSMISSÃO DE TELA INTEGRADA PARA ELECTRON & WEBBROWSER
+// FUNÇÃO DE TRANSMISSÃO COM ÁUDIO DO SISTEMA E SELEÇÃO DE QUALIDADE (RESOLUÇÃO/FPS)
 async function startScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -416,6 +416,13 @@ async function startScreenShare() {
     updateStageLayoutMode();
     return;
   }
+
+  const qualityVal = document.getElementById('screen-quality-select').value;
+  const includeAudio = document.getElementById('screen-include-audio').checked;
+
+  let width = 1280, height = 720, fps = 60;
+  if (qualityVal === '1080p60') { width = 1920; height = 1080; fps = 60; }
+  else if (qualityVal === '1080p30') { width = 1920; height = 1080; fps = 30; }
 
   if (window.electronAPI && window.electronAPI.getSources) {
     try {
@@ -437,21 +444,24 @@ async function startScreenShare() {
         card.addEventListener('click', async () => {
           screenPickerModal.classList.remove('active');
           try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-              audio: false,
+            const constraints = {
+              audio: includeAudio ? {
+                mandatory: {
+                  chromeMediaSource: 'desktop'
+                }
+              } : false,
               video: {
                 mandatory: {
                   chromeMediaSource: 'desktop',
                   chromeMediaSourceId: source.id,
-                  minWidth: 1280,
-                  maxWidth: 1920,
-                  minHeight: 720,
-                  maxHeight: 1080,
-                  maxFrameRate: 60
+                  maxWidth: width,
+                  maxHeight: height,
+                  maxFrameRate: fps
                 }
               }
-            });
+            };
 
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             screenStream = stream;
             mainStream.srcObject = screenStream;
 
@@ -478,7 +488,10 @@ async function startScreenShare() {
     }
   } else {
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { max: width }, height: { max: height }, frameRate: { max: fps } },
+        audio: includeAudio
+      });
       mainStream.srcObject = screenStream;
 
       screenStream.getVideoTracks()[0].onended = () => {
@@ -495,6 +508,8 @@ async function startScreenShare() {
 
 document.getElementById('btn-screen').addEventListener('click', startScreenShare);
 document.getElementById('btn-close-screen-picker').addEventListener('click', () => screenPickerModal.classList.remove('active'));
+const btnCloseTop = document.getElementById('btn-close-screen-picker-top');
+if (btnCloseTop) btnCloseTop.addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
 const chatDrawer = document.getElementById('chat-drawer');
 const btnOpenChat = document.getElementById('btn-open-chat');

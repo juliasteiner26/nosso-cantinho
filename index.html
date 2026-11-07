@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=12.0">
+  <link rel="stylesheet" href="style.css?v=13.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -145,7 +145,7 @@
     </div>
 
     <div class="cams-overlay">
-      <div class="cam-box" id="box-local">
+      <div class="cam-box streamer-card" id="box-local">
         <button id="btn-hide-self-cam" class="btn-cam-action" title="Esconder">👁️</button>
         <div class="speaking-glow-border" id="glow-local"></div>
         <div class="avatar-placeholder" id="avatar-local">
@@ -162,7 +162,7 @@
         </span>
       </div>
 
-      <div class="cam-box" id="box-remote">
+      <div class="cam-box streamer-card" id="box-remote">
         <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir">⛶</button>
         <div class="speaking-glow-border" id="glow-remote"></div>
         <div class="avatar-placeholder" id="avatar-remote">
@@ -297,16 +297,42 @@
     </div>
   </div>
 
+  <!-- MODAL DE SELEÇÃO DE TELA COM CONTROLES DE QUALIDADE E ÁUDIO DO SISTEMA -->
   <div id="screen-picker-modal" class="modal-backdrop">
-    <div class="modal-content" style="max-width: 720px; width: 92%; max-height: 82vh; display: flex; flex-direction: column;">
-      <h3 style="margin-bottom: 10px;">🖥️ Selecionar Janela / Tela</h3>
+    <div class="modal-content" style="max-width: 780px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+        <h3 style="font-size:18px;">🖥️ Transmitir Tela ou Aplicação</h3>
+        <button id="btn-close-screen-picker-top" class="btn-sm btn-cancel" style="padding:4px 10px;">✕</button>
+      </div>
+
+      <!-- PAINEL DE QUALIDADE & CONFIGURAÇÃO DE ÁUDIO DO SISTEMA -->
+      <div class="stream-settings-toolbar">
+        <div class="setting-item">
+          <label>⚙️ Qualidade / FPS:</label>
+          <select id="screen-quality-select" class="device-select-sm">
+            <option value="1080p60">1080p (60 FPS) - Alta Performance</option>
+            <option value="720p60" selected>720p (60 FPS) - Balanceado</option>
+            <option value="1080p30">1080p (30 FPS) - Econômico</option>
+          </select>
+        </div>
+
+        <div class="setting-item">
+          <label class="toggle-container">
+            <input type="checkbox" id="screen-include-audio" checked>
+            <span class="toggle-checkmark"></span>
+            🔊 Capturar Áudio do Sistema / Jogo
+          </label>
+        </div>
+      </div>
+
       <div id="screen-sources-list" class="sources-grid"></div>
+
       <div class="modal-actions" style="margin-top: 16px;">
         <button id="btn-close-screen-picker" class="btn-sm btn-cancel">Cancelar</button>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=12.0"></script>
+  <script src="app.js?v=13.0"></script>
 </body>
 </html>
