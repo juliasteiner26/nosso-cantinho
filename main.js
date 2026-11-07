@@ -25,15 +25,8 @@ function createWindow() {
     }
   });
 
-  const ONLINE_APP_URL = 'https://juliasteiner26.github.io/nosso-cantinho/';
-
-  if (ONLINE_APP_URL.includes('SEU_USUARIO')) {
-    mainWindow.loadFile('index.html');
-  } else { 
-    mainWindow.loadURL(ONLINE_APP_URL).catch(() => {
-      mainWindow.loadFile('index.html');
-    });
-  }
+  // Força o carregamento do arquivo local index.html para não puxar versão remota antiga
+  mainWindow.loadFile('index.html');
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {

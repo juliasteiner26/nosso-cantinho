@@ -3,12 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Nosso Cantinho</title>
-  <link rel="stylesheet" href="style.css?v=2.4">
+  <title>Space⁷⁷⁷</title>
+  <link rel="stylesheet" href="style.css?v=3.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
-<body>
+<body class="theme-streamer">
 
+  <!-- ================= TELA 1: LOBBY DE ENTRADA ================= -->
+  <div id="lobby-screen" class="lobby-backdrop">
+    <div class="lobby-card">
+      <div class="lobby-header">
+        <h2>Space⁷⁷⁷</h2>
+        <p>Salas Privadas & Transmissão de Tela</p>
+      </div>
+
+      <!-- Configuração de Perfil Local (Fim dos Conflitos de Nomes) -->
+      <div class="lobby-section">
+        <label class="lobby-label">Seu Apelido no App:</label>
+        <div class="profile-input-row">
+          <input type="text" id="lobby-username" placeholder="Digite seu apelido" maxlength="25">
+          <label for="lobby-avatar-input" class="btn-avatar-pick" title="Alterar Foto">
+            <img id="lobby-avatar-preview" src="" alt="Avatar">
+            <span>📷</span>
+          </label>
+          <input type="file" id="lobby-avatar-input" accept="image/*" style="display:none;">
+        </div>
+      </div>
+
+      <div class="lobby-grid">
+        <!-- Criar Nova Sala -->
+        <div class="lobby-box">
+          <h3>🔑 Criar Sala Privada</h3>
+          <div class="form-group">
+            <label>Nome da Sala:</label>
+            <input type="text" id="create-room-name" placeholder="ex: sala-da-ju-777">
+          </div>
+          <div class="form-group">
+            <label>PIN da Sala (4 dígitos - Opcional):</label>
+            <input type="password" id="create-room-pin" maxlength="4" placeholder="ex: 7777">
+          </div>
+          <button id="btn-create-room" class="btn-primary">🚀 Criar e Entrar</button>
+        </div>
+
+        <!-- Entrar em Sala Existente -->
+        <div class="lobby-box">
+          <h3>🔗 Entrar em uma Sala</h3>
+          <div class="form-group">
+            <label>Código/Nome da Sala:</label>
+            <input type="text" id="join-room-name" placeholder="ex: sala-da-ju-777">
+          </div>
+          <div class="form-group">
+            <label>PIN (se a sala exigir):</label>
+            <input type="password" id="join-room-pin" maxlength="4" placeholder="****">
+          </div>
+          <button id="btn-join-room" class="btn-secondary-action">🔌 Entrar na Sala</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TELA 2: SALA DE CHAMADA E TRANSMISSÃO ================= -->
+  
   <!-- Botão Flutuante de Restaurar PiP (modo Sobrepor do app) -->
   <button id="btn-pip-restore" title="Restaurar tamanho normal">✕</button>
 
@@ -20,16 +75,10 @@
   <!-- Barra Superior -->
   <header id="main-header">
     <div class="header-left">
-      <div class="love-counter-badge" id="love-badge" title="Passar o mouse para ver detalhes">
-        <span id="love-days-display">💖 Carregando...</span>
-        <div class="love-tooltip" id="love-tooltip">
-          <h4 id="tooltip-title">Nosso Tempo</h4>
-          <p id="tooltip-full-time">Carregando marcos...</p>
-          <hr>
-          <p id="tooltip-next-event">Próximo marco especial</p>
-        </div>
+      <div class="room-info-badge" id="room-info-badge">
+        <span id="room-name-display">🔒 Sala: --</span>
+        <button id="btn-copy-link" class="btn-copy" title="Copiar Link Direto para WhatsApp">📋 Link</button>
       </div>
-
       <span id="status-badge" class="badge">Aguardando...</span>
     </div>
 
@@ -42,11 +91,11 @@
       </button>
       <button class="btn-icon" id="btn-open-roulette" title="Sorteador de Decisões">🎲</button>
       <button class="btn-icon" id="btn-open-profile" title="Perfil & Personalização">👤</button>
-      <button class="btn-icon" id="btn-open-settings" title="Dispositivos & Áudio">⚙️</button>
+      <button class="btn-icon" id="btn-open-settings" title="Dispositivos, Áudio & Tema">⚙️</button>
     </div>
   </header>
 
-  <!-- Palco Central -->
+  <!-- Palco Central (Mantido o Layout de Transmissão que Você Gosta) -->
   <main id="stage" class="camera-focus-mode">
     
     <!-- Streams de Transmissão (Remoto e Local) -->
@@ -83,16 +132,16 @@
 
       <!-- Box Remoto -->
       <div class="cam-box" id="box-remote" title="Dois cliques para expandir em tela cheia">
-        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera dela">⛶</button>
+        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir câmera do participante">⛶</button>
         <div class="speaking-glow-border" id="glow-remote"></div>
         <div class="avatar-placeholder" id="avatar-remote">
           <img id="avatar-img-remote" src="" alt="Avatar Remoto">
-          <span class="avatar-name" id="avatar-name-remote">Esperando ela...</span>
+          <span class="avatar-name" id="avatar-name-remote">Aguardando...</span>
           <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
         </div>
         <video id="remote-cam" autoplay playsinline></video>
         <span class="cam-label" id="label-remote">
-          <span id="name-tag-remote">Ela</span>
+          <span id="name-tag-remote">Convidado</span>
           <span id="mute-indicator-remote" class="mute-indicator hidden">🔇</span>
         </span>
       </div>
@@ -107,10 +156,9 @@
     <button id="btn-toggle-cam" class="dock-btn" title="Ligar/Desligar Câmera">📷</button>
     <button id="btn-screen" class="dock-btn btn-highlight" title="Transmitir Tela">🖥️</button>
 
-    <!-- Destacar a transmissão que você está assistindo numa janela separada -->
-    <button id="btn-popout-stream" class="dock-btn hidden" title="Abrir a transmissão dela numa janela separada">🗔</button>
+    <button id="btn-popout-stream" class="dock-btn hidden" title="Abrir a transmissão numa janela separada">🗔</button>
 
-    <div class="volume-container" id="container-mic-volume" title="Volume da voz dela">
+    <div class="volume-container" id="container-mic-volume" title="Volume da voz do participante">
       <span class="vol-icon" id="mic-vol-icon">🎙️</span>
       <input type="range" id="remote-mic-volume" min="0" max="2" step="0.05" value="1">
       <span id="mic-vol-value">100%</span>
@@ -126,20 +174,20 @@
 
     <button id="btn-pip-mode" class="dock-btn" title="Sobrepor sobre jogos">🗗</button>
     <button id="btn-fullscreen" class="dock-btn" title="Tela Cheia">⛶</button>
-    <button id="btn-hangup" class="dock-btn btn-danger" title="Reconectar">📞</button>
+    <button id="btn-hangup" class="dock-btn btn-danger" title="Sair da Sala">📞</button>
   </footer>
 
   <!-- Modal Metas / Bucket List -->
   <div id="bucket-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 520px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-        <h3>📋 Nossas Metas & Planos</h3>
+        <h3>📋 Planos & Listas da Sala</h3>
         <button id="btn-close-bucket-top" class="btn-sm btn-cancel" style="padding: 4px 8px;">✕</button>
       </div>
-      <p class="modal-subtitle">Criar planejamentos</p>
+      <p class="modal-subtitle">Organizar coisas para fazer juntos</p>
 
       <div style="display:flex; gap:6px; margin-bottom: 12px;">
-        <input type="text" id="new-category-input" placeholder="Nova categoria (ex: Viagens, Filmes, Jogos)..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:7px 10px; border-radius:6px; font-size:12px;">
+        <input type="text" id="new-category-input" placeholder="Nova categoria..." style="flex:1; background:#111214; border:1px solid #2b2d31; color:#fff; padding:7px 10px; border-radius:6px; font-size:12px;">
         <button id="btn-add-category" class="btn-sm btn-highlight">+ Criar</button>
       </div>
 
@@ -162,11 +210,11 @@
   <!-- Gaveta Lateral: Bloco de Notas -->
   <aside id="notes-drawer" class="notes-drawer">
     <div class="drawer-header">
-      <h3>📝 Nosso Bloco de Notas</h3>
+      <h3>📝 Bloco de Notas da Sala</h3>
       <button id="btn-close-notes" class="btn-sm btn-cancel">✕</button>
     </div>
     <div class="drawer-body">
-      <textarea id="shared-notes-area" placeholder="Digite recadinhos ou lembretes aqui... Sincroniza em tempo real!"></textarea>
+      <textarea id="shared-notes-area" placeholder="Digite recadinhos, códigos ou lembretes aqui... Sincroniza em tempo real!"></textarea>
       <span class="sync-status" id="notes-sync-status">🟢 Sincronizado</span>
     </div>
   </aside>
@@ -175,11 +223,11 @@
   <div id="roulette-modal" class="modal-backdrop">
     <div class="modal-content">
       <h3>🎲 Sorteador de Decisões</h3>
-      <p class="modal-subtitle">Decidir o que fazer juntas</p>
+      <p class="modal-subtitle">Decidir o que jogar ou assistir</p>
       
       <div class="form-group">
-        <label>Opções:</label>
-        <textarea id="roulette-options-input" rows="4" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px; resize:none;">GTA RP&#10;Assistir Série&#10;Jogar Minecraft&#10;Palia</textarea>
+        <label>Opções (uma por linha):</label>
+        <textarea id="roulette-options-input" rows="4" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px; resize:none;">Valorant&#10;GTA RP&#10;Assistir Filme&#10;Minecraft</textarea>
       </div>
 
       <div class="roulette-result" id="roulette-result-display">🎯 Clique em Sortear</div>
@@ -191,25 +239,20 @@
     </div>
   </div>
 
-  <!-- Modal: Perfil, Status e Personalização -->
+  <!-- Modal: Perfil & Personalização -->
   <div id="profile-modal" class="modal-backdrop">
     <div class="modal-content">
       <h3>👤 Perfil & Personalização</h3>
-      <p class="modal-subtitle">Personalize suas informações e visual na chamada</p>
+      <p class="modal-subtitle">Altere suas informações que aparecem para as outras pessoas</p>
 
       <div class="form-group">
-        <label for="profile-name-input">Seu Nome / Apelido:</label>
+        <label for="profile-name-input">Seu Apelido / Nome:</label>
         <input type="text" id="profile-name-input" maxlength="25">
       </div>
 
       <div class="form-group">
         <label for="profile-status-input">Seu Status Atual:</label>
-        <input type="text" id="profile-status-input" placeholder="Ex: 🎮 Focada no game, ☕ Café..." maxlength="40">
-      </div>
-
-      <div class="form-group">
-        <label for="profile-date-input">Data do Nosso Início:</label>
-        <input type="date" id="profile-date-input" style="background:#111214; border:1px solid #2b2d31; color:#fff; padding:8px; border-radius:6px;">
+        <input type="text" id="profile-status-input" placeholder="Ex: jogando, assistindo..." maxlength="40">
       </div>
 
       <div class="form-group">
@@ -252,17 +295,18 @@
     </div>
   </div>
 
-  <!-- Modal: Configurações Técnicas & Câmera Espelhada -->
+  <!-- Modal: Configurações Técnicas & Tema -->
   <div id="settings-modal" class="modal-backdrop">
     <div class="modal-content">
-      <h3>⚙️ Configurações de Dispositivos</h3>
-      <p class="modal-subtitle">Escolha seus equipamentos e preferências de vídeo</p>
+      <h3>⚙️ Configurações & Dispositivos</h3>
+      <p class="modal-subtitle">Escolha o visual do app e seus equipamentos de áudio/vídeo</p>
 
-      <div class="form-group">
-        <label>Papel na Conexão:</label>
-        <select id="role-select" class="device-select">
-          <option value="host">👑 Mozin dela</option>
-          <option value="guest">🐺 Lobinha</option>
+      <!-- IDEIA 1: Seletor de Tema em Tempo Real -->
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>🎨 Visual / Tema do App:</label>
+        <select id="theme-select" class="device-select" style="font-weight: bold; color: #00b0f4;">
+          <option value="streamer">🌌 Opção 1: Dark Streamer (Discord / Twitch)</option>
+          <option value="minimalist">✨ Opção 2: Minimalista & Moderno (Meet / Arc)</option>
         </select>
       </div>
 
@@ -311,7 +355,7 @@
       </div>
 
       <div class="form-group" style="margin-top: 10px;">
-        <label for="screen-audio-select">🔊 Áudio da transmissão:</label>
+        <label for="screen-audio-select">🔊 Áudio da transmissão (Jogo / Sistema):</label>
         <select id="screen-audio-select" class="device-select">
           <option value="">🔇 Sem áudio</option>
         </select>
@@ -325,6 +369,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=2.4"></script>
+  <script src="app.js?v=3.0"></script>
 </body>
 </html>

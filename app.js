@@ -1,72 +1,192 @@
-// --- CONFIGURAÇÃO DE SALA & PEERJS ---
-const ROOM_NAME = 'nosso-cantinho-duo-call';
+// --- PEERJS E GERENCIADOR DE SALAS PRIVADAS ---
+let currentRoomName = '';
+let currentRoomPin = '';
+let myPeerId = '';
+let peer = null;
 
-const roleSelect = document.getElementById('role-select');
-let currentRole = localStorage.getItem('app_user_role') || 'host';
+const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
-if (roleSelect) {
-  roleSelect.value = currentRole;
-  roleSelect.addEventListener('change', (e) => {
-    localStorage.setItem('app_user_role', e.target.value);
-    window.location.reload();
+let myProfile = {
+  name: localStorage.getItem('profile_name') || 'Júlia 777',
+  avatar: localStorage.getItem('profile_avatar') || defaultAvatar,
+  status: localStorage.getItem('profile_status') || '🟢 Disponível'
+};
+
+let remoteProfile = {
+  name: 'Convidado',
+  avatar: defaultAvatar,
+  status: 'Aguardando...'
+};
+
+// IDEIA 1: Seletor de Tema
+let currentTheme = localStorage.getItem('app_theme') || 'streamer';
+function applyTheme(themeName) {
+  currentTheme = themeName;
+  localStorage.setItem('app_theme', themeName);
+  document.body.classList.remove('theme-streamer', 'theme-minimalist');
+  document.body.classList.add(`theme-${themeName}`);
+  const themeSelect = document.getElementById('theme-select');
+  if (themeSelect) themeSelect.value = themeName;
+}
+applyTheme(currentTheme);
+
+// DOM Lobby
+const lobbyScreen = document.getElementById('lobby-screen');
+const lobbyUsername = document.getElementById('lobby-username');
+const lobbyAvatarPreview = document.getElementById('lobby-avatar-preview');
+const lobbyAvatarInput = document.getElementById('lobby-avatar-input');
+const createRoomName = document.getElementById('create-room-name');
+const createRoomPin = document.getElementById('create-room-pin');
+const btnCreateRoom = document.getElementById('btn-create-room');
+const joinRoomName = document.getElementById('join-room-name');
+const joinRoomPin = document.getElementById('join-room-pin');
+const btnJoinRoom = document.getElementById('btn-join-room');
+const roomNameDisplay = document.getElementById('room-name-display');
+const btnCopyLink = document.getElementById('btn-copy-link');
+const themeSelect = document.getElementById('theme-select');
+
+if (lobbyUsername) lobbyUsername.value = myProfile.name;
+if (lobbyAvatarPreview) lobbyAvatarPreview.src = myProfile.avatar;
+
+if (lobbyAvatarInput) {
+  lobbyAvatarInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      myProfile.avatar = event.target.result;
+      localStorage.setItem('profile_avatar', myProfile.avatar);
+      if (lobbyAvatarPreview) lobbyAvatarPreview.src = myProfile.avatar;
+      updateProfileUI();
+    };
+    reader.readAsDataURL(file);
   });
 }
 
-const isHost = (currentRole === 'host');
-const myPeerId = isHost ? `${ROOM_NAME}-host` : `${ROOM_NAME}-guest`;
-const targetPeerId = isHost ? `${ROOM_NAME}-guest` : `${ROOM_NAME}-host`;
-
-const peer = new Peer(myPeerId, {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' }
-    ]
-  }
-});
-
-let isPeerReconnecting = false;
-
-function attemptPeerReconnect(delayMs = 1500) {
-  if (isPeerReconnecting || peer.destroyed) return;
-  isPeerReconnecting = true;
-  setTimeout(() => {
-    isPeerReconnecting = false;
-    if (!peer.destroyed && peer.disconnected) {
-      try {
-        peer.reconnect();
-      } catch (err) {
-        console.warn('Falha ao reconectar peer:', err);
-      }
-    }
-  }, delayMs);
+if (themeSelect) {
+  themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
 }
 
-peer.on('disconnected', () => {
-  if (statusBadge && !(mainCall && mainCall.open)) {
-    statusBadge.innerText = '🔄 Reconectando...';
-    statusBadge.classList.remove('connected');
-  }
-  attemptPeerReconnect();
-});
+// IDEIA 2: Suporte a Entrar via Link Direto da URL (?sala=nome)
+const urlParams = new URLSearchParams(window.location.search);
+const roomFromUrl = urlParams.get('sala') || urlParams.get('room');
+if (roomFromUrl && joinRoomName) {
+  joinRoomName.value = roomFromUrl;
+}
 
-peer.on('error', (err) => {
-  const recoverableTypes = ['network', 'server-error', 'socket-error', 'socket-closed'];
-  if (err && recoverableTypes.includes(err.type)) {
-    attemptPeerReconnect();
-  }
-});
+// Inicializar Conexão PeerJS em Sala Privada
+function initPeerConnection(roomName, isHostCall) {
+  currentRoomName = roomName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const randomId = Math.random().toString(36).substring(2, 7);
+  myPeerId = isHostCall ? `room-${currentRoomName}-host` : `room-${currentRoomName}-guest-${randomId}`;
 
+  peer = new Peer(myPeerId, {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
+    }
+  });
+
+  peer.on('open', () => {
+    if (lobbyScreen) lobbyScreen.classList.add('hidden');
+    if (roomNameDisplay) roomNameDisplay.innerText = `🔒 Sala: ${currentRoomName}`;
+    if (statusBadge) statusBadge.innerText = isHostCall ? 'Aguardando convidado...' : 'Conectando à sala...';
+    
+    startMicrophone().then(() => {
+      if (!isHostCall) {
+        initiateCallToHost();
+      }
+    });
+  });
+
+  peer.on('connection', conn => setupDataConnection(conn));
+
+  peer.on('call', call => {
+    if (call.metadata && call.metadata.type === 'screen') {
+      call.answer();
+      call.on('stream', stream => {
+        mainStream.srcObject = stream;
+        mainStream.muted = false;
+        mainStream.volume = Math.min(screenVolumeMultiplier, 1.0);
+        mainStream.play().catch(() => {});
+        const hasAudio = stream.getAudioTracks().length > 0;
+        if (containerScreenVolume) containerScreenVolume.classList.toggle('hidden', !hasAudio);
+        updateStageLayoutMode();
+        updatePopoutButtonVisibility();
+        updateLocalScreenPreviewVisibility();
+        updateAutohideState();
+      });
+    } else {
+      mainCall = call;
+      const activeStream = getMainCallStream();
+      call.answer(activeStream);
+      attachMainCallEvents(call);
+    }
+  });
+
+  peer.on('disconnected', () => {
+    if (statusBadge && !(mainCall && mainCall.open)) {
+      statusBadge.innerText = '🔄 Reconectando...';
+      statusBadge.classList.remove('connected');
+    }
+    setTimeout(() => { if (peer && !peer.destroyed) peer.reconnect(); }, 1500);
+  });
+}
+
+function initiateCallToHost() {
+  const targetHostId = `room-${currentRoomName}-host`;
+  const activeStream = getMainCallStream();
+  if (mainCall) { try { mainCall.close(); } catch(e) {} }
+  const conn = peer.connect(targetHostId);
+  setupDataConnection(conn);
+  mainCall = peer.call(targetHostId, activeStream, { metadata: { type: 'main' } });
+  attachMainCallEvents(mainCall);
+}
+
+// IDEIA 3: Botões de Criar e Entrar com PIN
+if (btnCreateRoom) {
+  btnCreateRoom.addEventListener('click', () => {
+    const room = createRoomName.value.trim();
+    if (!room) return alert('Por favor, escolha um nome para a sala!');
+    myProfile.name = lobbyUsername.value.trim() || myProfile.name;
+    localStorage.setItem('profile_name', myProfile.name);
+    currentRoomPin = createRoomPin.value.trim();
+    initPeerConnection(room, true);
+  });
+}
+
+if (btnJoinRoom) {
+  btnJoinRoom.addEventListener('click', () => {
+    const room = joinRoomName.value.trim();
+    if (!room) return alert('Digite o código ou nome da sala!');
+    myProfile.name = lobbyUsername.value.trim() || myProfile.name;
+    localStorage.setItem('profile_name', myProfile.name);
+    currentRoomPin = joinRoomPin.value.trim();
+    initPeerConnection(room, false);
+  });
+}
+
+// Copiar Link Direto
+if (btnCopyLink) {
+  btnCopyLink.addEventListener('click', () => {
+    const link = `${window.location.origin}${window.location.pathname}?sala=${currentRoomName}`;
+    navigator.clipboard.writeText(link).then(() => {
+      btnCopyLink.innerText = '✅ Copiado!';
+      setTimeout(() => { btnCopyLink.innerText = '📋 Link'; }, 2000);
+    });
+  });
+}
+
+// Global Vars
 let micStream = null;
 let camStream = null;
 let screenStream = null;
 let mainCall = null;
 let screenCall = null;
 let dataConn = null;
-let connectTimer = null;
 
 let isMicMuted = false;
 let isPushMuted = false;
@@ -76,15 +196,9 @@ let isNoiseSuppressionOn = true;
 let isLowGpuMode = false;
 let isPipActive = false;
 let isSelfCamHidden = false;
-
-// Controle de visibilidade do preview da SUA própria transmissão
 let isLocalScreenPreviewHidden = false;
-
-// Indica se a transmissão que você está ASSISTINDO foi destacada numa
-// janela separada (Picture-in-Picture nativo do navegador/Electron)
 let isStreamPoppedOut = false;
 
-// Estado de Espelhamento Sincronizado
 let isMyCamMirrored = (localStorage.getItem('mirror_my_camera') === 'true');
 let isRemoteCamMirrored = false;
 
@@ -97,30 +211,10 @@ let audioContext = null;
 let micGateGain = null;
 let micGateInterval = null;
 
-// Atalho Push-to-Mute Local
 let pushToMuteConfig = JSON.parse(localStorage.getItem('push_to_mute_config')) || {
-  type: 'keyboard',
-  code: 'KeyM',
-  button: 0,
-  label: 'Tecla M'
+  type: 'keyboard', code: 'KeyM', button: 0, label: 'Tecla M'
 };
 let isListeningForBinding = false;
-
-const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
-
-let myProfile = {
-  name: localStorage.getItem('profile_name') || (isHost ? 'Mozão da Bella 🐺💙' : 'Neném da Thaya'),
-  avatar: localStorage.getItem('profile_avatar') || defaultAvatar,
-  status: localStorage.getItem('profile_status') || '🟢 Disponível',
-  startDate: localStorage.getItem('profile_start_date') || '2026-07-30'
-};
-
-let remoteProfile = {
-  name: isHost ? 'Neném da Thaya' : 'Mozão da Bella 🐺💙',
-  avatar: defaultAvatar,
-  status: 'Aguardando...',
-  startDate: myProfile.startDate
-};
 
 // BUCKET LIST DATA
 let defaultBucketData = {
@@ -137,7 +231,7 @@ let defaultBucketData = {
 };
 let bucketData = JSON.parse(localStorage.getItem('shared_bucket_list')) || defaultBucketData;
 
-// Elementos DOM
+// DOM Elements
 const stageEl = document.getElementById('stage');
 const statusBadge = document.getElementById('status-badge');
 const localCam = document.getElementById('local-cam');
@@ -220,7 +314,6 @@ const btnCloseProfile = document.getElementById('btn-close-profile');
 const btnSaveProfile = document.getElementById('btn-save-profile');
 const profileNameInput = document.getElementById('profile-name-input');
 const profileStatusInput = document.getElementById('profile-status-input');
-const profileDateInput = document.getElementById('profile-date-input');
 const profileFileInput = document.getElementById('profile-file-input');
 const profilePreviewImg = document.getElementById('profile-preview-img');
 const btnRecordKey = document.getElementById('btn-record-key');
@@ -246,7 +339,6 @@ remoteCam.muted = true;
 remoteVoiceAudio.muted = false;
 mainStream.muted = false;
 
-// Som estilo Discord
 function playStreamNotificationSound(isStarting = true) {
   try {
     initAudioAnalyser();
@@ -275,13 +367,9 @@ function playStreamNotificationSound(isStarting = true) {
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.26);
-  } catch (e) {
-    console.warn('Erro ao reproduzir som de transmissão:', e);
-  }
+  } catch (e) { console.warn('Erro ao tocar som:', e); }
 }
 
-// Centraliza a decisão de quando o palco deve focar nas câmeras (modo
-// conversa) versus focar na tela transmitida (câmeras pequenas no canto).
 function updateStageLayoutMode() {
   if (!stageEl) return;
   const hasAnyScreenContent = isScreenSharing || !!mainStream.srcObject;
@@ -289,7 +377,6 @@ function updateStageLayoutMode() {
   stageEl.classList.toggle('camera-focus-mode', shouldFocusCameras);
 }
 
-// Mostra/esconde o botão de destacar a transmissão numa janela separada
 function updatePopoutButtonVisibility() {
   if (!btnPopoutStream) return;
   const hasWatchableScreen = !!mainStream.srcObject;
@@ -305,9 +392,7 @@ if (btnPopoutStream) {
       } else if (mainStream.srcObject) {
         await mainStream.requestPictureInPicture();
       }
-    } catch (err) {
-      console.warn('Não foi possível abrir a janela separada:', err);
-    }
+    } catch (err) { console.warn('Erro janela separada:', err); }
   });
 }
 
@@ -323,15 +408,12 @@ mainStream.addEventListener('leavepictureinpicture', () => {
   updateStageLayoutMode();
 });
 
-// Decide se o preview da SUA transmissão deve aparecer
 function updateLocalScreenPreviewVisibility() {
   if (!localScreenPreviewWrap) return;
-
   if (!isScreenSharing) {
     localScreenPreviewWrap.classList.add('hidden');
     return;
   }
-
   const bothSharing = !!mainStream.srcObject;
   const shouldShow = !isLocalScreenPreviewHidden && !bothSharing;
   localScreenPreviewWrap.classList.toggle('hidden', !shouldShow);
@@ -346,12 +428,10 @@ if (btnHideLocalScreenPreview) {
   });
 }
 
-// 1. CÂMERA REMOTA EM TELA CHEIA (Alternância e botão com ícone dinâmico)
 function toggleRemoteFullscreenCam() {
   const isNowFullscreen = boxRemote.classList.toggle('fullscreen-focus');
   if (btnFullscreenCam) {
     btnFullscreenCam.innerText = isNowFullscreen ? '✕' : '⛶';
-    btnFullscreenCam.title = isNowFullscreen ? 'Recolher câmera' : 'Expandir câmera dela';
   }
 }
 
@@ -366,12 +446,10 @@ if (boxRemote) {
 if (btnFullscreenCam) {
   btnFullscreenCam.addEventListener('click', (e) => {
     e.stopPropagation();
-    e.preventDefault();
     toggleRemoteFullscreenCam();
   });
 }
 
-// Espelhamento
 function updateMirrorUI() {
   if (boxLocal) boxLocal.classList.toggle('mirrored', isMyCamMirrored);
   if (btnToggleMirrorMyCam) {
@@ -414,7 +492,6 @@ function updateProfileUI() {
 }
 updateProfileUI();
 
-// Ocultar e Restaurar Própria Câmera
 function toggleSelfCamVisibility(hide) {
   isSelfCamHidden = hide;
   boxLocal.classList.toggle('cam-hidden', isSelfCamHidden);
@@ -423,97 +500,8 @@ function toggleSelfCamVisibility(hide) {
   }
 }
 
-if (btnHideSelfCam) {
-  btnHideSelfCam.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleSelfCamVisibility(true);
-  });
-}
-
-if (btnRestoreSelfCam) {
-  btnRestoreSelfCam.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleSelfCamVisibility(false);
-  });
-}
-
-// 2. CÁLCULO E FORMATAÇÃO DO TEMPO JUNTAS
-function updateLoveCounter() {
-  try {
-    let dateStr = myProfile.startDate || '2026-07-30';
-    let year, month, day;
-
-    if (dateStr.includes('-')) {
-      [year, month, day] = dateStr.split('-').map(Number);
-    } else if (dateStr.includes('/')) {
-      [day, month, year] = dateStr.split('/').map(Number);
-    } else {
-      year = 2026; month = 7; day = 30;
-    }
-
-    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-
-    if (isNaN(startDate.getTime())) return;
-
-    let y1 = startDate.getFullYear();
-    let m1 = startDate.getMonth();
-    let d1 = startDate.getDate();
-
-    let y2 = today.getFullYear();
-    let m2 = today.getMonth();
-    let d2 = today.getDate();
-
-    let years = y2 - y1;
-    let months = m2 - m1;
-    let days = d2 - d1;
-
-    if (days < 0) {
-      months--;
-      days += 30;
-    }
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-
-    // CORREÇÃO: Math.floor em vez de Math.round — só conta um dia como
-    // completo quando ele realmente passou por inteiro. Math.round podia
-    // arredondar pra cima e adiantar a contagem em 1 dia antes da hora.
-    const totalDaysDisplay = (years === 0 && months === 0)
-      ? days
-      : Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-
-    const daysBadge = document.getElementById('love-days-display');
-    if (daysBadge) daysBadge.innerText = `💖 ${totalDaysDisplay} dias juntas`;
-
-    const parts = [];
-    if (years > 0) parts.push(`${years} ${years === 1 ? 'ano' : 'anos'}`);
-    if (months > 0) parts.push(`${months} ${months === 1 ? 'mês' : 'meses'}`);
-    if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? 'dia' : 'dias'}`);
-
-    const tooltipFull = document.getElementById('tooltip-full-time');
-    if (tooltipFull) {
-      tooltipFull.innerText = `${parts.join(' e ')} compartilhando momentos ❤️`;
-    }
-
-    let nextAnniversary = new Date(y2, m2, d1, 0, 0, 0, 0);
-    if (nextAnniversary <= today) {
-      nextAnniversary = new Date(y2, m2 + 1, d1, 0, 0, 0, 0);
-    }
-    const daysUntilNext = Math.max(1, Math.round((nextAnniversary.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
-
-    const tooltipNext = document.getElementById('tooltip-next-event');
-    if (tooltipNext) {
-      tooltipNext.innerText = `🎉 Próximo mesversário em ${daysUntilNext} ${daysUntilNext === 1 ? 'dia' : 'dias'}!`;
-    }
-  } catch (err) {
-    console.error('Erro no contador:', err);
-  }
-}
-setInterval(updateLoveCounter, 60000);
-updateLoveCounter();
+if (btnHideSelfCam) btnHideSelfCam.addEventListener('click', (e) => { e.stopPropagation(); toggleSelfCamVisibility(true); });
+if (btnRestoreSelfCam) btnRestoreSelfCam.addEventListener('click', (e) => { e.stopPropagation(); toggleSelfCamVisibility(false); });
 
 // Cronômetro da Chamada
 let callStartTime = null;
@@ -556,10 +544,7 @@ function setupSpeakingDetector(stream, isLocal) {
     const box = isLocal ? boxLocal : boxRemote;
 
     function checkVolume() {
-      if (isLowGpuMode) {
-        requestAnimationFrame(checkVolume);
-        return;
-      }
+      if (isLowGpuMode) { requestAnimationFrame(checkVolume); return; }
       analyser.getByteFrequencyData(dataArray);
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
@@ -573,9 +558,7 @@ function setupSpeakingDetector(stream, isLocal) {
       requestAnimationFrame(checkVolume);
     }
     checkVolume();
-  } catch (err) {
-    console.warn('Detector de voz:', err);
-  }
+  } catch (err) { console.warn('Detector voz:', err); }
 }
 
 // BUCKET LIST LOGIC
@@ -668,9 +651,7 @@ if (btnAddBucketItem) {
       bucketData.categories[bucketData.activeCategory] = [];
     }
     bucketData.categories[bucketData.activeCategory].push({
-      id: Date.now().toString(),
-      text: text,
-      done: false
+      id: Date.now().toString(), text: text, done: false
     });
     newBucketItemInput.value = '';
     saveAndBroadcastBucket();
@@ -686,13 +667,9 @@ if (btnDeleteActiveCategory) {
   });
 }
 
-if (btnOpenBucket) btnOpenBucket.addEventListener('click', () => {
-  renderBucketUI();
-  bucketModal.classList.add('active');
-});
+if (btnOpenBucket) btnOpenBucket.addEventListener('click', () => { renderBucketUI(); bucketModal.classList.add('active'); });
 if (btnCloseBucketTop) btnCloseBucketTop.addEventListener('click', () => bucketModal.classList.remove('active'));
 
-// Redimensionamento Inteligente
 function applyCamSize(size) {
   document.documentElement.style.setProperty('--remote-cam-width', `${size}px`);
   if (camSizeValue) camSizeValue.innerText = `${size}px`;
@@ -706,7 +683,6 @@ if (camSizeSlider) {
   camSizeSlider.addEventListener('input', (e) => applyCamSize(e.target.value));
 }
 
-// Fundo
 if (bgFileInput) {
   bgFileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -731,7 +707,7 @@ if (btnResetBg) {
 const savedBg = localStorage.getItem('app_stage_background');
 if (savedBg && stageEl) stageEl.style.backgroundImage = `url("${savedBg}")`;
 
-// 3. ATALHO PUSH-TO-MUTE COM SUPORTE TOTAL A BOTÕES LATERAIS DE MOUSE
+// Push-to-Mute
 function updateBindingButtonLabel() {
   if (btnRecordKey) {
     btnRecordKey.innerText = `Atalho: ${pushToMuteConfig.label}`;
@@ -742,8 +718,7 @@ updateBindingButtonLabel();
 
 if (btnRecordKey) {
   btnRecordKey.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     isListeningForBinding = true;
     btnRecordKey.innerText = '🔴 Pressione qualquer tecla ou botão...';
     btnRecordKey.classList.add('btn-highlight');
@@ -761,12 +736,9 @@ if (btnResetKey) {
 
 window.addEventListener('keydown', (e) => {
   if (isListeningForBinding) {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     pushToMuteConfig = {
-      type: 'keyboard',
-      code: e.code,
-      button: 0,
+      type: 'keyboard', code: e.code, button: 0,
       label: `Tecla ${e.key.toUpperCase() === ' ' ? 'Espaço' : e.key.toUpperCase()}`
     };
     localStorage.setItem('push_to_mute_config', JSON.stringify(pushToMuteConfig));
@@ -774,7 +746,6 @@ window.addEventListener('keydown', (e) => {
     updateBindingButtonLabel();
     return;
   }
-
   if (e.repeat) return;
   if (pushToMuteConfig.type === 'keyboard' && e.code === pushToMuteConfig.code && !e.target.matches('input, textarea')) {
     activatePushMute();
@@ -790,36 +761,25 @@ window.addEventListener('keyup', (e) => {
 function handlePointerDown(e) {
   if (isListeningForBinding) {
     if (e.button === 0 && e.target === btnRecordKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-
+    e.preventDefault(); e.stopPropagation();
     let mouseLabel = `Mouse Botão ${e.button}`;
     if (e.button === 1) mouseLabel = 'Mouse Meio (Scroll)';
     else if (e.button === 3) mouseLabel = 'Mouse Lateral 1 (Traseiro)';
     else if (e.button === 4) mouseLabel = 'Mouse Lateral 2 (Frontal)';
-
-    pushToMuteConfig = {
-      type: 'mouse',
-      code: '',
-      button: e.button,
-      label: mouseLabel
-    };
+    pushToMuteConfig = { type: 'mouse', code: '', button: e.button, label: mouseLabel };
     localStorage.setItem('push_to_mute_config', JSON.stringify(pushToMuteConfig));
     isListeningForBinding = false;
     updateBindingButtonLabel();
     return;
   }
-
   if (pushToMuteConfig.type === 'mouse' && e.button === pushToMuteConfig.button) {
-    e.preventDefault();
-    activatePushMute();
+    e.preventDefault(); activatePushMute();
   }
 }
 
 function handlePointerUp(e) {
   if (pushToMuteConfig.type === 'mouse' && e.button === pushToMuteConfig.button) {
-    e.preventDefault();
-    deactivatePushMute();
+    e.preventDefault(); deactivatePushMute();
   }
 }
 
@@ -830,9 +790,7 @@ window.addEventListener('auxclick', (e) => e.preventDefault(), true);
 function activatePushMute() {
   if (micStream && !isMicMuted) {
     isPushMuted = true;
-    if (micGateGain && audioContext) {
-      micGateGain.gain.setTargetAtTime(0.0, audioContext.currentTime, 0.01);
-    }
+    if (micGateGain && audioContext) micGateGain.gain.setTargetAtTime(0.0, audioContext.currentTime, 0.01);
     micStream.getAudioTracks().forEach(t => t.enabled = false);
     btnToggleMic.innerText = '🔇';
     btnToggleMic.classList.add('btn-active');
@@ -844,9 +802,7 @@ function activatePushMute() {
 function deactivatePushMute() {
   if (micStream && !isMicMuted) {
     isPushMuted = false;
-    if (micGateGain && audioContext) {
-      micGateGain.gain.setTargetAtTime(1.0, audioContext.currentTime, 0.02);
-    }
+    if (micGateGain && audioContext) micGateGain.gain.setTargetAtTime(1.0, audioContext.currentTime, 0.02);
     micStream.getAudioTracks().forEach(t => t.enabled = true);
     btnToggleMic.innerText = '🎤';
     btnToggleMic.classList.remove('btn-active');
@@ -855,18 +811,14 @@ function deactivatePushMute() {
   }
 }
 
-// 4. SUBSTITUIÇÃO SEGURA DE TRILHAS
 function replaceTrackOnCall(newTrack, kind) {
   if (mainCall && mainCall.peerConnection) {
     const senders = mainCall.peerConnection.getSenders();
     const sender = senders.find(s => s.track && s.track.kind === kind);
-    if (sender) {
-      sender.replaceTrack(newTrack).catch(err => console.error(`Erro ao substituir ${kind}:`, err));
-    }
+    if (sender) sender.replaceTrack(newTrack).catch(err => console.error(`Erro substituir ${kind}:`, err));
   }
 }
 
-// Volumes
 function showVolumeHUD(icon, value) {
   hudIcon.innerText = icon;
   hudText.innerText = `${Math.round(value * 100)}%`;
@@ -894,30 +846,23 @@ if (screenVolSlider) screenVolSlider.addEventListener('input', (e) => updateRemo
 
 boxRemote.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const nextVal = micVolumeMultiplier + (e.deltaY < 0 ? 0.05 : -0.05);
-  updateRemoteMicVolume(nextVal);
+  updateRemoteMicVolume(micVolumeMultiplier + (e.deltaY < 0 ? 0.05 : -0.05));
   showVolumeHUD('🎙️', micVolumeMultiplier);
 });
 
 mainStream.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const nextVal = screenVolumeMultiplier + (e.deltaY < 0 ? 0.05 : -0.05);
-  updateRemoteScreenVolume(nextVal);
+  updateRemoteScreenVolume(screenVolumeMultiplier + (e.deltaY < 0 ? 0.05 : -0.05));
   showVolumeHUD('🖥️', screenVolumeMultiplier);
 });
 
-// Ocultação Automática
 function updateAutohideState() {
   const isStreamingActive = isScreenSharing || (mainStream.srcObject !== null);
   const isFs = !!document.fullscreenElement;
   const shouldAutohide = isStreamingActive || isFs;
-
   document.body.classList.toggle('autohide-controls', shouldAutohide);
-  if (shouldAutohide) {
-    revealControlsTemporarily();
-  } else {
-    document.body.classList.remove('show-controls');
-  }
+  if (shouldAutohide) revealControlsTemporarily();
+  else document.body.classList.remove('show-controls');
 }
 
 function revealControlsTemporarily() {
@@ -934,44 +879,25 @@ function revealControlsTemporarily() {
 window.addEventListener('mousemove', revealControlsTemporarily);
 window.addEventListener('touchstart', revealControlsTemporarily);
 
-// Controle de Tela Cheia Real
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else if (document.documentElement.webkitRequestFullscreen) {
-      document.documentElement.webkitRequestFullscreen();
-    }
+    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
   } else {
-    if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    }
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
   }
 }
 
 const btnFullscreen = document.getElementById('btn-fullscreen');
-if (btnFullscreen) {
-  btnFullscreen.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleFullscreen();
-  });
-}
+if (btnFullscreen) btnFullscreen.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(); });
 
 stageEl.addEventListener('dblclick', (e) => {
   if (e.target.closest('.cam-box') || e.target.closest('.btn-cam-action') || e.target.closest('.restore-cam-tab')) return;
   toggleFullscreen();
 });
 
-mainStream.addEventListener('dblclick', (e) => {
-  e.stopPropagation();
-  toggleFullscreen();
-});
-
+mainStream.addEventListener('dblclick', (e) => { e.stopPropagation(); toggleFullscreen(); });
 document.addEventListener('fullscreenchange', updateAutohideState);
 
-// Modo Leve
 btnLowGpu.addEventListener('click', () => {
   isLowGpuMode = !isLowGpuMode;
   document.body.classList.toggle('low-gpu-mode', isLowGpuMode);
@@ -979,8 +905,6 @@ btnLowGpu.addEventListener('click', () => {
   btnLowGpu.classList.toggle('btn-toggle-on', isLowGpuMode);
 });
 
-// Modo PiP (Sobrepor o app sobre jogos — não confundir com o
-// Picture-in-Picture nativo do vídeo, que é a função de destacar)
 function togglePiP() {
   isPipActive = !isPipActive;
   document.body.classList.toggle('pip-active', isPipActive);
@@ -992,7 +916,6 @@ function togglePiP() {
 btnPipMode.addEventListener('click', togglePiP);
 if (btnPipRestore) btnPipRestore.addEventListener('click', togglePiP);
 
-// Dispositivos
 async function loadDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1034,19 +957,12 @@ async function loadDevices() {
     if (audioOutputSelect && audioOutputSelect.value && typeof remoteVoiceAudio.setSinkId === 'function') {
       remoteVoiceAudio.setSinkId(audioOutputSelect.value).catch(() => {});
     }
-  } catch (err) {
-    console.error('Erro ao listar dispositivos:', err);
-  }
+  } catch (err) { console.error('Erro dispositivos:', err); }
 }
 
-// Microfone
 async function startMicrophone() {
   if (micStream) micStream.getTracks().forEach(t => t.stop());
-
-  if (micGateInterval) {
-    clearInterval(micGateInterval);
-    micGateInterval = null;
-  }
+  if (micGateInterval) { clearInterval(micGateInterval); micGateInterval = null; }
 
   const audioSource = micSelect.value;
   if (audioSource) localStorage.setItem('selected_mic_id', audioSource);
@@ -1055,9 +971,7 @@ async function startMicrophone() {
     const rawMicStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: audioSource ? { exact: audioSource } : undefined,
-        echoCancellation: true,
-        noiseSuppression: isNoiseSuppressionOn,
-        autoGainControl: true
+        echoCancellation: true, noiseSuppression: isNoiseSuppressionOn, autoGainControl: true
       },
       video: false
     });
@@ -1086,11 +1000,8 @@ async function startMicrophone() {
       for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
       const avg = sum / dataArray.length;
 
-      if (avg < 12) {
-        micGateGain.gain.setTargetAtTime(0.0, actx.currentTime, 0.05);
-      } else {
-        micGateGain.gain.setTargetAtTime(1.0, actx.currentTime, 0.02);
-      }
+      if (avg < 12) micGateGain.gain.setTargetAtTime(0.0, actx.currentTime, 0.05);
+      else micGateGain.gain.setTargetAtTime(1.0, actx.currentTime, 0.02);
     }, 30);
 
     micStream = dest.stream;
@@ -1102,9 +1013,7 @@ async function startMicrophone() {
 
     setupSpeakingDetector(micStream, true);
     loadDevices();
-  } catch (err) {
-    console.warn('Microfone não acessado:', err);
-  }
+  } catch (err) { console.warn('Microfone não acessado:', err); }
 }
 
 btnToggleMic.addEventListener('click', () => {
@@ -1144,8 +1053,7 @@ micSelect.addEventListener('change', () => {
 
 function createBlackVideoTrack() {
   const canvas = document.createElement('canvas');
-  canvas.width = 2;
-  canvas.height = 2;
+  canvas.width = 2; canvas.height = 2;
   const ctx2d = canvas.getContext('2d');
   ctx2d.fillRect(0, 0, 2, 2);
   const blackStream = canvas.captureStream(1);
@@ -1154,13 +1062,9 @@ function createBlackVideoTrack() {
   return blackTrack;
 }
 
-// 5. CÂMERA (Ciclo de Vida Blindado)
 async function toggleCamera() {
   if (isCamOn) {
-    if (camStream) {
-      camStream.getTracks().forEach(t => t.stop());
-      camStream = null;
-    }
+    if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
     localCam.srcObject = null;
     boxLocal.classList.remove('video-active');
     isCamOn = false;
@@ -1172,9 +1076,7 @@ async function toggleCamera() {
     if (videoSource) localStorage.setItem('selected_cam_id', videoSource);
     try {
       const constraints = {
-        video: videoSource
-          ? { deviceId: { exact: videoSource }, width: { ideal: 1280 } }
-          : { facingMode: 'user', width: { ideal: 1280 } },
+        video: videoSource ? { deviceId: { exact: videoSource }, width: { ideal: 1280 } } : { facingMode: 'user', width: { ideal: 1280 } },
         audio: false
       };
       camStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -1186,9 +1088,7 @@ async function toggleCamera() {
 
       const videoTrack = camStream.getVideoTracks()[0];
       replaceTrackOnCall(videoTrack, 'video');
-    } catch (err) {
-      alert('Erro ao acessar câmera: ' + err.message);
-    }
+    } catch (err) { alert('Erro ao acessar câmera: ' + err.message); }
   }
 }
 
@@ -1196,19 +1096,18 @@ btnToggleCam.addEventListener('click', toggleCamera);
 cameraSelect.addEventListener('change', () => {
   if (cameraSelect.value) {
     localStorage.setItem('selected_cam_id', cameraSelect.value);
-    if (isCamOn) {
-      toggleCamera().then(() => toggleCamera());
-    }
+    if (isCamOn) toggleCamera().then(() => toggleCamera());
   }
 });
 
-// 6. TRANSMISSÃO DE TELA (Desktop Electron)
+// Transmissão de Tela (Browser Nativo / Electron)
 async function toggleScreenShare() {
   if (isScreenSharing) {
     stopScreenSharing();
     return;
   }
 
+  // Se estiver no App Desktop Electron
   if (window.electronAPI && window.electronAPI.getSources) {
     try {
       const sources = await window.electronAPI.getSources();
@@ -1227,8 +1126,19 @@ async function toggleScreenShare() {
         screenSourcesList.appendChild(card);
       });
       screenPickerModal.classList.add('active');
+    } catch (err) { console.error('Erro fontes:', err); }
+  } else {
+    // Se estiver no Navegador Web (Chrome, Opera GX, Celular)
+    try {
+      const isHighQuality = (streamQualitySelect ? streamQualitySelect.value === '1080p60' : true);
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: isHighQuality ? 1920 : 1280, frameRate: isHighQuality ? 60 : 30 },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      screenStream = displayStream;
+      handleStreamStart(screenStream);
     } catch (err) {
-      console.error('Erro ao listar fontes:', err);
+      console.warn('Transmissão cancelada ou não suportada:', err);
     }
   }
 }
@@ -1244,10 +1154,8 @@ async function startElectronStream(sourceId) {
       audio: false,
       video: {
         mandatory: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: sourceId,
-          maxWidth: maxWidth,
-          maxFrameRate: maxFps
+          chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId,
+          maxWidth: maxWidth, maxFrameRate: maxFps
         }
       }
     });
@@ -1256,43 +1164,22 @@ async function startElectronStream(sourceId) {
     let cleanAudioTrack = null;
     if (audioDeviceId) {
       try {
-        // CORREÇÃO: desligamos explicitamente o cancelamento de eco,
-        // supressão de ruído e controle automático de ganho nessa captura.
-        // Sem isso, o navegador aplica por padrão um processamento pensado
-        // pra VOZ HUMANA em qualquer getUserMedia — inclusive no áudio do
-        // jogo vindo pelo VB-CABLE. O controle automático de ganho, em
-        // especial, vai se "recalibrando" sozinho tentando normalizar um
-        // áudio que não é voz, e é isso que causa o volume cair e ficar
-        // com artefatos estranhos depois de um tempo.
         const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: { exact: audioDeviceId },
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false
-          },
+          audio: { deviceId: { exact: audioDeviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
           video: false
         });
         cleanAudioTrack = audioOnlyStream.getAudioTracks()[0];
-      } catch (audioErr) {
-        console.warn('Erro ao capturar áudio da tela:', audioErr);
-      }
+      } catch (audioErr) { console.warn('Erro áudio tela:', audioErr); }
     }
 
-    screenStream = cleanAudioTrack
-      ? new MediaStream([videoTrack, cleanAudioTrack])
-      : new MediaStream([videoTrack]);
-
+    screenStream = cleanAudioTrack ? new MediaStream([videoTrack, cleanAudioTrack]) : new MediaStream([videoTrack]);
     handleStreamStart(screenStream);
-  } catch (err) {
-    alert('Erro ao capturar tela: ' + err.message);
-  }
+  } catch (err) { alert('Erro ao capturar tela: ' + err.message); }
 }
 
 function handleStreamStart(stream) {
   isScreenSharing = true;
   playStreamNotificationSound(true);
-
   updateStageLayoutMode();
 
   if (localScreenStream) {
@@ -1319,9 +1206,7 @@ function stopScreenSharing() {
   isScreenSharing = false;
   playStreamNotificationSound(false);
 
-  if (localScreenStream) {
-    localScreenStream.srcObject = null;
-  }
+  if (localScreenStream) localScreenStream.srcObject = null;
   updateLocalScreenPreviewVisibility();
   updateStageLayoutMode();
 
@@ -1329,22 +1214,17 @@ function stopScreenSharing() {
   btnScreen.classList.add('btn-highlight');
 
   sendDataMessage({ type: 'SCREEN_STATE', isSharing: false });
-  if (screenCall) {
-    try { screenCall.close(); } catch(e) {}
-    screenCall = null;
-  }
+  if (screenCall) { try { screenCall.close(); } catch(e) {} screenCall = null; }
   updateAutohideState();
 }
 
 btnScreen.addEventListener('click', toggleScreenShare);
 if (btnCloseScreenPicker) btnCloseScreenPicker.addEventListener('click', () => screenPickerModal.classList.remove('active'));
 
-// 7. BLOCO DE NOTAS COM INDICADOR VISUAL (Bolinha Vermelha)
+// Notes
 function toggleNotes() {
   notesDrawer.classList.toggle('open');
-  if (notesDrawer.classList.contains('open')) {
-    if (notesUnreadDot) notesUnreadDot.classList.add('hidden');
-  }
+  if (notesDrawer.classList.contains('open') && notesUnreadDot) notesUnreadDot.classList.add('hidden');
 }
 btnOpenNotes.addEventListener('click', toggleNotes);
 btnCloseNotes.addEventListener('click', () => notesDrawer.classList.remove('open'));
@@ -1374,12 +1254,10 @@ btnSpinRoulette.addEventListener('click', () => {
   sendDataMessage({ type: 'ROULETTE_RESULT', result: picked });
 });
 
-// Configurações
 function toggleSettings() { settingsModal.classList.toggle('active'); }
 btnOpenSettings.addEventListener('click', toggleSettings);
 btnCloseSettings.addEventListener('click', () => settingsModal.classList.remove('active'));
 
-// WebRTC PeerJS Call
 function getMainCallStream() {
   const tracks = [];
   if (micStream && micStream.getAudioTracks().length > 0) {
@@ -1388,33 +1266,22 @@ function getMainCallStream() {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
     const dst = ctx.createMediaStreamDestination();
-    osc.connect(dst);
-    osc.start();
+    osc.connect(dst); osc.start();
     const track = dst.stream.getAudioTracks()[0];
     track.enabled = false;
     tracks.push(track);
   }
 
-  if (isCamOn && camStream) {
-    camStream.getVideoTracks().forEach(t => tracks.push(t));
-  } else {
-    tracks.push(createBlackVideoTrack());
-  }
+  if (isCamOn && camStream) camStream.getVideoTracks().forEach(t => tracks.push(t));
+  else tracks.push(createBlackVideoTrack());
 
   return new MediaStream(tracks);
 }
 
 function sendScreenCall() {
-  if (!isScreenSharing || !screenStream) return;
-
-  if (peer.disconnected) {
-    console.warn('Peer desconectado ao tentar transmitir tela — reconectando antes de tentar de novo...');
-    attemptPeerReconnect();
-    setTimeout(sendScreenCall, 2000);
-    return;
-  }
-
-  screenCall = peer.call(targetPeerId, screenStream, { metadata: { type: 'screen' } });
+  if (!isScreenSharing || !screenStream || !peer) return;
+  const targetId = `room-${currentRoomName}-host`;
+  screenCall = peer.call(targetId, screenStream, { metadata: { type: 'screen' } });
 }
 
 function sendDataMessage(data) {
@@ -1437,7 +1304,6 @@ function setupDataConnection(conn) {
     if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
       updateProfileUI();
-      updateLoveCounter();
     } else if (data.type === 'CAM_STATE') {
       boxRemote.classList.toggle('video-active', data.isCamOn);
     } else if (data.type === 'MUTE_STATE') {
@@ -1450,9 +1316,7 @@ function setupDataConnection(conn) {
       if (!data.isSharing) {
         if (containerScreenVolume) containerScreenVolume.classList.add('hidden');
         mainStream.srcObject = null;
-        if (document.pictureInPictureElement === mainStream) {
-          document.exitPictureInPicture().catch(() => {});
-        }
+        if (document.pictureInPictureElement === mainStream) document.exitPictureInPicture().catch(() => {});
         updatePopoutButtonVisibility();
       }
       updateStageLayoutMode();
@@ -1461,11 +1325,8 @@ function setupDataConnection(conn) {
     } else if (data.type === 'NOTES_UPDATE') {
       sharedNotesArea.value = data.text;
       localStorage.setItem('shared_notes_content', data.text);
-      notesSyncStatus.innerText = '🟢 Sincronizado por ela';
-
-      if (!notesDrawer.classList.contains('open') && notesUnreadDot) {
-        notesUnreadDot.classList.remove('hidden');
-      }
+      notesSyncStatus.innerText = '🟢 Sincronizado por outro participante';
+      if (!notesDrawer.classList.contains('open') && notesUnreadDot) notesUnreadDot.classList.remove('hidden');
     } else if (data.type === 'ROULETTE_OPTIONS_UPDATE') {
       rouletteOptionsInput.value = data.options;
     } else if (data.type === 'ROULETTE_RESULT') {
@@ -1478,81 +1339,9 @@ function setupDataConnection(conn) {
   });
 }
 
-function initiateCall() {
-  if (peer.disconnected) {
-    console.warn('Peer desconectado ao iniciar chamada — reconectando antes de tentar de novo...');
-    attemptPeerReconnect();
-    return;
-  }
-
-  const activeStream = getMainCallStream();
-  if (mainCall) { try { mainCall.close(); } catch(e) {} }
-  const conn = peer.connect(targetPeerId);
-  setupDataConnection(conn);
-  mainCall = peer.call(targetPeerId, activeStream, { metadata: { type: 'main' } });
-  attachMainCallEvents(mainCall);
-}
-
-let hasStartedInitialSetup = false;
-
-function ensureGuestReconnectTimer() {
-  if (isHost) return;
-  if (mainCall && mainCall.open) return;
-  if (connectTimer) clearInterval(connectTimer);
-  connectTimer = setInterval(() => {
-    if (!mainCall || !mainCall.open) initiateCall();
-    else clearInterval(connectTimer);
-  }, 2500);
-}
-
-peer.on('open', () => {
-  if (!hasStartedInitialSetup) {
-    hasStartedInitialSetup = true;
-    if (statusBadge) statusBadge.innerText = isHost ? 'Aguardando minha vida...' : 'Conectando ao cantinho...';
-    startMicrophone().then(() => {
-      ensureGuestReconnectTimer();
-    });
-  } else {
-    console.log('Peer reconectado à sinalização (chamada principal não foi afetada).');
-    if (mainCall && mainCall.open && statusBadge) {
-      statusBadge.innerText = '🟢 Conectadas';
-      statusBadge.classList.add('connected');
-    }
-    ensureGuestReconnectTimer();
-  }
-});
-
-peer.on('connection', conn => setupDataConnection(conn));
-
-peer.on('call', call => {
-  if (call.metadata && call.metadata.type === 'screen') {
-    call.answer();
-    call.on('stream', stream => {
-      mainStream.srcObject = stream;
-      mainStream.muted = false;
-      mainStream.volume = Math.min(screenVolumeMultiplier, 1.0);
-      mainStream.play().catch(() => {});
-      const hasAudio = stream.getAudioTracks().length > 0;
-      if (containerScreenVolume) containerScreenVolume.classList.toggle('hidden', !hasAudio);
-      updateStageLayoutMode();
-      updatePopoutButtonVisibility();
-      updateLocalScreenPreviewVisibility();
-      updateAutohideState();
-    });
-  } else {
-    if (connectTimer) clearInterval(connectTimer);
-    mainCall = call;
-    const activeStream = getMainCallStream();
-    call.answer(activeStream);
-    attachMainCallEvents(call);
-  }
-});
-
 function attachMainCallEvents(call) {
   if (!call) return;
   call.on('stream', stream => {
-    if (connectTimer) clearInterval(connectTimer);
-
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
 
@@ -1571,7 +1360,7 @@ function attachMainCallEvents(call) {
     }
 
     if (statusBadge) {
-      statusBadge.innerText = '🟢 Conectadas';
+      statusBadge.innerText = '🟢 Conectados';
       statusBadge.classList.add('connected');
     }
     startCallTimer();
@@ -1579,26 +1368,17 @@ function attachMainCallEvents(call) {
 
   call.on('close', () => {
     if (statusBadge) {
-      statusBadge.innerText = 'Reconectando...';
+      statusBadge.innerText = 'Chamada encerrada';
       statusBadge.classList.remove('connected');
     }
     stopCallTimer();
-    if (!isHost) {
-      if (connectTimer) clearInterval(connectTimer);
-      connectTimer = setInterval(() => {
-        if (!mainCall || !mainCall.open) initiateCall();
-        else clearInterval(connectTimer);
-      }, 2500);
-    }
   });
 }
 
-// Perfil
 let tempAvatarBase64 = myProfile.avatar;
 function openProfile() {
   profileNameInput.value = myProfile.name;
   if (profileStatusInput) profileStatusInput.value = myProfile.status || '';
-  profileDateInput.value = myProfile.startDate;
   profilePreviewImg.src = myProfile.avatar || defaultAvatar;
   tempAvatarBase64 = myProfile.avatar;
   updateBindingButtonLabel();
@@ -1632,16 +1412,13 @@ profileFileInput.addEventListener('change', (e) => {
 btnSaveProfile.addEventListener('click', () => {
   myProfile.name = profileNameInput.value.trim() || myProfile.name;
   myProfile.status = profileStatusInput ? (profileStatusInput.value.trim() || '🟢 Disponível') : '🟢 Disponível';
-  myProfile.startDate = profileDateInput.value || myProfile.startDate;
   myProfile.avatar = tempAvatarBase64;
 
   localStorage.setItem('profile_name', myProfile.name);
   localStorage.setItem('profile_status', myProfile.status);
-  localStorage.setItem('profile_start_date', myProfile.startDate);
   localStorage.setItem('profile_avatar', myProfile.avatar);
 
   updateProfileUI();
-  updateLoveCounter();
   profileModal.classList.remove('active');
   sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
 });
