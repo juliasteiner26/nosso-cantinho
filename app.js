@@ -1,5 +1,5 @@
 // --- SISTEMA DE AUTENTICAÇÃO E PERMISSÕES (ADMIN / USER) ---
-const ADMIN_USER = "steiner777"; // Seu usuário de Administradora
+const ADMIN_USER = "steiner777";
 
 let currentUser = JSON.parse(localStorage.getItem('app_logged_user')) || null;
 let currentRoomName = '';
@@ -8,7 +8,8 @@ let myPeerId = '';
 let targetPeerId = null;
 let peer = null;
 
-const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%235865f2'><circle cx='50' cy='50' r='50'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
+// CORREÇÃO: Data URI SVG válido e sanitizado para o avatar padrão
+const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%235865f2'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
 let myProfile = {
   name: localStorage.getItem('profile_name') || '',
@@ -18,7 +19,6 @@ let myProfile = {
 
 let remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Aguardando...' };
 
-// Sistema de Gerenciamento de Salas (Local Storage Banco Simulado)
 function getRoomsDatabase() {
   return JSON.parse(localStorage.getItem('app_rooms_db') || '{}');
 }
@@ -36,7 +36,6 @@ function deleteRoomFromDb(name) {
   renderRoomsManagerList();
 }
 
-// Renderiza a Lista de Salas no Lobby com as permissões corretas
 function renderRoomsManagerList() {
   const container = document.getElementById('rooms-list-container');
   if (!container) return;
@@ -100,6 +99,7 @@ function updateAuthUI() {
 
     if (!myProfile.name) myProfile.name = currentUser.username;
     displayNameInput.value = myProfile.name;
+    updateProfileUI();
     renderRoomsManagerList();
   } else {
     authScreen.classList.remove('hidden');
@@ -118,7 +118,6 @@ btnLogin.addEventListener('click', () => {
     localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
     updateAuthUI();
   } else if (user.toLowerCase() === ADMIN_USER.toLowerCase() && pass === "777") {
-    // Senha padrão para sua conta de Admin
     currentUser = { username: user };
     localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
     updateAuthUI();
@@ -153,6 +152,7 @@ btnSaveDisplayName.addEventListener('click', () => {
   if (val) {
     myProfile.name = val;
     localStorage.setItem('profile_name', val);
+    updateProfileUI();
     alert('Nome de exibição atualizado!');
   }
 });
@@ -252,12 +252,30 @@ function setupDataConnection(conn) {
   dataConn.on('data', data => {
     if (data.type === 'PROFILE_UPDATE') {
       remoteProfile = data.profile;
-      document.getElementById('avatar-name-remote').innerText = remoteProfile.name;
+      updateProfileUI();
     }
   });
 }
 
 function sendDataMessage(data) { if (dataConn && dataConn.open) dataConn.send(data); }
+
+function updateProfileUI() {
+  const avatarLocal = document.getElementById('avatar-img-local');
+  const nameLocal = document.getElementById('avatar-name-local');
+  const tagLocal = document.getElementById('name-tag-local');
+
+  const avatarRemote = document.getElementById('avatar-img-remote');
+  const nameRemote = document.getElementById('avatar-name-remote');
+  const tagRemote = document.getElementById('name-tag-remote');
+
+  if (avatarLocal) avatarLocal.src = myProfile.avatar || defaultAvatar;
+  if (nameLocal) nameLocal.innerText = myProfile.name || 'Você';
+  if (tagLocal) tagLocal.innerText = `${myProfile.name || 'Você'} (Você)`;
+
+  if (avatarRemote) avatarRemote.src = remoteProfile.avatar || defaultAvatar;
+  if (nameRemote) nameRemote.innerText = remoteProfile.name || 'Convidado';
+  if (tagRemote) tagRemote.innerText = remoteProfile.name || 'Convidado';
+}
 
 function getMainCallStream() {
   const tracks = [];
@@ -282,7 +300,6 @@ function attachMainCallEvents(call) {
   });
 }
 
-// Configurações & Temas
 document.getElementById('theme-select').addEventListener('change', (e) => applyTheme(e.target.value));
 document.getElementById('btn-open-settings').addEventListener('click', () => document.getElementById('settings-modal').classList.add('active'));
 document.getElementById('btn-close-settings').addEventListener('click', () => document.getElementById('settings-modal').classList.remove('active'));

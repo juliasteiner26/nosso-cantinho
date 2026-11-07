@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Space⁷⁷⁷</title>
-  <link rel="stylesheet" href="style.css?v=4.0">
+  <title>Space 777 - Salas & Transmissão</title>
+  <link rel="stylesheet" href="style.css?v=5.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -13,7 +13,7 @@
   <div id="auth-screen" class="lobby-backdrop">
     <div class="lobby-card">
       <div class="lobby-header">
-        <h2>Space⁷⁷⁷</h2>
+        <h2>🚀 Space 777</h2>
         <p>Faça login para acessar o sistema de salas</p>
       </div>
 
@@ -45,7 +45,6 @@
         <button id="btn-logout" class="btn-cancel" style="padding: 6px 12px;">Sair da Conta</button>
       </div>
 
-      <!-- Configuração do Nome de Exibição -->
       <div class="lobby-section">
         <label class="lobby-label">Seu Nome de Exibição na Sala:</label>
         <div class="profile-input-row">
@@ -55,7 +54,6 @@
       </div>
 
       <div class="lobby-grid">
-        <!-- Criar Nova Sala -->
         <div class="lobby-box">
           <h3>🔑 Criar Sala Privada</h3>
           <div class="form-group">
@@ -69,7 +67,6 @@
           <button id="btn-create-room" class="btn-primary">🚀 Criar e Entrar</button>
         </div>
 
-        <!-- Entrar em Sala Existente -->
         <div class="lobby-box">
           <h3>🔗 Entrar em uma Sala</h3>
           <div class="form-group">
@@ -84,15 +81,12 @@
         </div>
       </div>
 
-      <!-- PAINEL DE SALAS / ADMIN -->
       <div class="lobby-section" style="margin-top: 16px; margin-bottom: 0;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <label class="lobby-label" style="margin:0;">📋 Gerenciador de Salas Ativas:</label>
           <span id="admin-badge" class="badge hidden" style="background:#ed4245; color:#fff;">👑 Administradora</span>
         </div>
-        <div id="rooms-list-container" class="rooms-manager-list">
-          <!-- As salas serão inseridas dinamicamente pelo JS -->
-        </div>
+        <div id="rooms-list-container" class="rooms-manager-list"></div>
       </div>
     </div>
   </div>
@@ -135,11 +129,14 @@
     </div>
 
     <div class="cams-overlay">
+      <!-- Box Local -->
       <div class="cam-box" id="box-local">
-        <button id="btn-hide-self-cam" class="btn-cam-action">👁️</button>
+        <button id="btn-hide-self-cam" class="btn-cam-action" title="Esconder">👁️</button>
         <div class="speaking-glow-border" id="glow-local"></div>
         <div class="avatar-placeholder" id="avatar-local">
-          <img id="avatar-img-local" src="" alt="Avatar Local">
+          <div class="avatar-circle">
+            <img id="avatar-img-local" src="" alt="Avatar Local">
+          </div>
           <span class="avatar-name" id="avatar-name-local">Você</span>
           <span class="avatar-status" id="avatar-status-local">Disponível</span>
         </div>
@@ -150,11 +147,14 @@
         </span>
       </div>
 
+      <!-- Box Remoto -->
       <div class="cam-box" id="box-remote">
-        <button id="btn-fullscreen-cam" class="btn-cam-action">⛶</button>
+        <button id="btn-fullscreen-cam" class="btn-cam-action" title="Expandir">⛶</button>
         <div class="speaking-glow-border" id="glow-remote"></div>
         <div class="avatar-placeholder" id="avatar-remote">
-          <img id="avatar-img-remote" src="" alt="Avatar Remoto">
+          <div class="avatar-circle">
+            <img id="avatar-img-remote" src="" alt="Avatar Remoto">
+          </div>
           <span class="avatar-name" id="avatar-name-remote">Aguardando...</span>
           <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
         </div>
@@ -194,7 +194,7 @@
     <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
 
-  <!-- MODAIS RESTANTES -->
+  <!-- MODAIS -->
   <div id="bucket-modal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 520px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -280,6 +280,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=4.0"></script>
+  <script src="app.js?v=5.0"></script>
 </body>
 </html>
