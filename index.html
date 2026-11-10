@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=17.0">
+  <link rel="stylesheet" href="style.css?v=18.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="theme-streamer">
@@ -37,71 +37,82 @@
     </div>
   </div>
 
-  <!-- TELA 2: LOBBY DE SALAS & PAINEL ADMIN -->
-  <div id="lobby-screen" class="lobby-backdrop hidden">
-    <div class="lobby-card" style="max-width: 750px;">
-      <div class="lobby-header" style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <h2>🚀 Space 777</h2>
-          <p id="user-welcome-text">Bem-vinda(o)</p>
+  <!-- TELA 2: LOBBY (lista de salas na lateral + um formulário por vez) -->
+  <div id="lobby-screen" class="lobby-screen hidden">
+
+    <aside class="lobby-side">
+      <h2 class="lobby-brand">🚀 Space 777</h2>
+      <div class="lobby-caption">Minhas salas</div>
+      <div id="my-rooms-list" class="my-rooms"></div>
+
+      <div class="lobby-user">
+        <span id="sidebar-user-avatar" class="user-avatar">?</span>
+        <div class="lobby-user-info">
+          <strong id="sidebar-user-name">--</strong>
+          <span id="user-welcome-text">@usuario</span>
         </div>
-        <button id="btn-logout" class="btn-cancel" style="padding: 6px 12px;">Sair da Conta</button>
+        <button id="btn-edit-display-name" class="btn-sm btn-cancel" title="Mudar o nome que aparece na chamada">Editar</button>
+      </div>
+      <button id="btn-logout" class="btn-secondary-action">Sair da conta</button>
+    </aside>
+
+    <main class="lobby-main">
+      <div class="lobby-main-head">
+        <h1 id="lobby-title">Entrar numa sala</h1>
+        <span id="admin-badge" class="badge hidden" style="background:#ed4245; color:#fff;">👑 Admin</span>
+        <span class="spacer"></span>
+        <button id="btn-open-admin" class="btn-secondary-action hidden">Painel admin</button>
+      </div>
+      <p id="lobby-hint" class="lobby-hint">Use o nome e a senha que seu amigo passou. As salas que você já usou ficam na lista ao lado.</p>
+
+      <div class="lobby-tabs">
+        <button id="tab-join" class="tab-btn active" aria-pressed="true">Entrar</button>
+        <button id="tab-create" class="tab-btn" aria-pressed="false">Criar sala</button>
       </div>
 
-      <div id="vip-shortcut-box" class="lobby-section hidden" style="background: linear-gradient(135deg, rgba(88,101,242,0.15), rgba(237,66,69,0.15)); border: 1px solid #5865f2;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <h3 style="font-size:16px; color:#fff;">💖 Nosso Cantinho (Sala Exclusiva)</h3>
-            <p style="font-size:12px; color:#b5bac1;">Acesso rápido com todas as ferramentas liberadas.</p>
-          </div>
-          <button id="btn-enter-vip-room" class="btn-primary" style="background:#ed4245;">Entrar Direto 🚀</button>
+      <div id="panel-join" class="lobby-form-card">
+        <div class="form-group">
+          <label for="join-room-name">Nome da sala:</label>
+          <input type="text" id="join-room-name" placeholder="ex: sala-de-jogos">
         </div>
+        <div class="form-group">
+          <label for="join-room-pin">Senha / PIN da sala:</label>
+          <input type="password" id="join-room-pin" placeholder="Digite a senha da sala">
+        </div>
+        <button id="btn-join-room" class="btn-primary">🔌 Entrar na sala</button>
       </div>
 
-      <div class="lobby-section">
-        <label class="lobby-label">Seu Nome de Exibição na Sala:</label>
-        <div class="profile-input-row">
-          <input type="text" id="display-name-input" placeholder="Como você quer aparecer na chamada?">
-          <button id="btn-save-display-name" class="btn-sm btn-highlight">Salvar Nome</button>
+      <div id="panel-create" class="lobby-form-card hidden">
+        <div class="form-group">
+          <label for="create-room-name">Nome da sala:</label>
+          <input type="text" id="create-room-name" placeholder="ex: sala-de-jogos">
         </div>
+        <div class="form-group">
+          <label for="create-room-pin">Senha / PIN da sala (obrigatório):</label>
+          <input type="password" id="create-room-pin" placeholder="Crie um PIN (ex: 7777)">
+        </div>
+        <button id="btn-create-room" class="btn-primary">🚀 Criar e entrar</button>
       </div>
+    </main>
 
-      <div class="lobby-grid">
-        <div class="lobby-box">
-          <h3>🔑 Criar Sala Privada</h3>
-          <div class="form-group">
-            <label>Nome da Sala:</label>
-            <input type="text" id="create-room-name" placeholder="ex: sala-de-jogos">
-          </div>
-          <div class="form-group">
-            <label>Senha / PIN da Sala (Obrigatório):</label>
-            <input type="password" id="create-room-pin" placeholder="Crie um PIN (ex: 7777)">
-          </div>
-          <button id="btn-create-room" class="btn-primary">🚀 Criar e Entrar</button>
-        </div>
-
-        <div class="lobby-box">
-          <h3>🔗 Entrar em uma Sala</h3>
-          <div class="form-group">
-            <label>Nome da Sala:</label>
-            <input type="text" id="join-room-name" placeholder="ex: sala-de-jogos">
-          </div>
-          <div class="form-group">
-            <label>Senha / PIN da Sala:</label>
-            <input type="password" id="join-room-pin" placeholder="Digite a senha da sala">
-          </div>
-          <button id="btn-join-room" class="btn-secondary-action">🔌 Entrar na Sala</button>
-        </div>
+    <!-- PAINEL ADMIN (gaveta lateral, só aparece para a administradora) -->
+    <div id="admin-scrim" class="admin-scrim"></div>
+    <aside id="admin-drawer" class="admin-drawer" aria-label="Painel admin">
+      <div class="admin-head">
+        <h3>Painel admin</h3>
+        <button id="btn-close-admin" class="btn-sm btn-cancel">Fechar</button>
       </div>
-
-      <div class="lobby-section" style="margin-top: 16px; margin-bottom: 0;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <label class="lobby-label" style="margin:0;">📋 Gerenciador de Salas & Usuários:</label>
-          <span id="admin-badge" class="badge hidden" style="background:#ed4245; color:#fff;">👑 Administradora</span>
-        </div>
-        <div id="rooms-list-container" class="rooms-manager-list"></div>
+      <div class="admin-tabs">
+        <button id="tab-admin-users" class="tab-btn sm active" aria-pressed="true">Usuários</button>
+        <button id="tab-admin-rooms" class="tab-btn sm" aria-pressed="false">Salas</button>
       </div>
-    </div>
+      <input type="text" id="admin-search" class="admin-input" placeholder="Buscar usuário" aria-label="Buscar">
+      <div id="admin-list" class="admin-list"></div>
+      <div id="admin-add-row" class="admin-add-row">
+        <input type="text" id="admin-add-vip" class="admin-input" placeholder="Adicionar VIP pelo nome" aria-label="Adicionar VIP pelo nome">
+        <button id="btn-admin-add-vip" class="btn-sm">Adicionar</button>
+      </div>
+    </aside>
   </div>
 
   <!-- TELA 3: PALCO DA CHAMADA -->
@@ -132,7 +143,7 @@
 
   <main id="stage">
     <video id="main-stream" autoplay playsinline muted class="hidden"></video>
-    
+
     <!-- ÁUDIO DA TRANSMISSÃO DA OUTRA PESSOA -->
     <audio id="remote-screen-audio" autoplay playsinline></audio>
 
@@ -188,7 +199,7 @@
       <span id="mic-vol-value">100%</span>
     </div>
 
-    <!-- NOVO CONTROLE DE VOLUME DA TRANSMISSÃO DA TELA -->
+    <!-- CONTROLE DE VOLUME DA TRANSMISSÃO DA TELA -->
     <div class="volume-container hidden" id="container-screen-volume">
       <span class="vol-icon" title="Volume da Transmissão">🖥️</span>
       <input type="range" id="remote-screen-volume" min="0" max="1" step="0.05" value="1">
@@ -312,7 +323,7 @@
           <label class="toggle-container">
             <input type="checkbox" id="screen-include-audio" checked>
             <span class="toggle-checkmark"></span>
-            🔊 Incluir Áudio da Transmissão
+            🔊 Incluir áudio do app compartilhado
           </label>
         </div>
       </div>
@@ -325,6 +336,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=17.0"></script>
+  <script src="app.js?v=18.0"></script>
 </body>
 </html>
