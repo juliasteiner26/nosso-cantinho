@@ -7,12 +7,18 @@ const PEER_PREFIX = "space777-";
 const HEARTBEAT_MS = 2000;            // ping a cada 2s
 const HEARTBEAT_TIMEOUT_MS = 8000;    // sem sinal por 8s = a pessoa caiu
 const GUEST_CONNECT_TIMEOUT_MS = 9000;
+const JOIN_VERIFY_TIMEOUT_MS = 20000; // tempo máximo para confirmar a senha antes de desistir
 
 let currentUser = JSON.parse(localStorage.getItem('app_logged_user')) || null;
 let currentRoomName = '';
 let currentRoomPin = '';
 let inRoom = false;
 let roomSession = 0;          // muda a cada entrada/saída: invalida tentativas antigas
+let roomEntered = false;      // já passou da tela de senha e está dentro da sala
+let joinOrigin = 'join';      // de onde veio o pedido: 'join' | 'create' | 'list'
+let joinTrusted = false;      // senha já conhecida/confirmada (sala sua ou já visitada)
+let joinBusy = false;         // verificando a senha
+let joinTimeoutTimer = null;
 let myPeerId = '';
 let targetPeerId = null;
 let peer = null;
@@ -28,6 +34,9 @@ let callTimerInterval = null;
 let callStartedAt = 0;
 
 let micStream = null;
+let camStream = null;
+let camCall = null;           // câmera que EU envio
+let incomingCamCall = null;   // câmera que EU assisto
 let screenStream = null;
 let mainCall = null;
 let screenCall = null;          // transmissão que EU envio
@@ -107,13 +116,32 @@ const remoteScreenVolumeSlider = document.getElementById('remote-screen-volume')
 const screenVolValueLabel = document.getElementById('screen-vol-value');
 
 const chatDrawer = document.getElementById('chat-drawer');
-const notesDrawer = document.getElementById('notes-drawer');
 const btnOpenChat = document.getElementById('btn-open-chat');
 const btnCloseChat = document.getElementById('btn-close-chat');
 const chatInput = document.getElementById('chat-input');
 const btnSendChat = document.getElementById('btn-send-chat');
 const chatMessagesList = document.getElementById('chat-messages-list');
 const chatUnreadDot = document.getElementById('chat-unread-dot');
+
+const joinError = document.getElementById('join-error');
+const createError = document.getElementById('create-error');
+
+const btnToggleCam = document.getElementById('btn-toggle-cam');
+const localCam = document.getElementById('local-cam');
+const remoteCam = document.getElementById('remote-cam');
+const avatarLocalBox = document.getElementById('avatar-local');
+const avatarRemoteBox = document.getElementById('avatar-remote');
+
+const settingsModal = document.getElementById('settings-modal');
+const micSelect = document.getElementById('mic-select');
+const camSelect = document.getElementById('camera-select');
+const speakerSelect = document.getElementById('speaker-select');
+
+const pwCurrent = document.getElementById('pw-current');
+const pwNew = document.getElementById('pw-new');
+const pwConfirm = document.getElementById('pw-confirm');
+const pwMessage = document.getElementById('pw-message');
+const btnChangePassword = document.getElementById('btn-change-password');
 
 // ---------------------------------------------------------------------------
 // UTILIDADES
@@ -223,7 +251,7 @@ function deleteRoomFromDb(name) {
 function enterSavedRoom(name) {
   const info = getRoomsDatabase()[name];
   if (!info) return showToast('Sala não encontrada.');
-  joinRoom(name, info.pin);
+  joinRoom(name, info.pin, 'list');
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +355,7 @@ function enterListedRoom(name) {
   if (name === VIP_ROOM_NAME && !getRoomsDatabase()[name]) {
     saveRoomToDb(VIP_ROOM_NAME, '7777', 'Exclusiva');
   }
-  joinRoom(item.name, item.pin);
+  joinRoom(item.name, item.pin, 'list');
 }
 
 function removeListedRoom(name) {
@@ -453,14 +481,6 @@ btnAdminAddVip.addEventListener('click', addCustomVipUser);
 adminAddVip.addEventListener('keydown', (e) => { if (e.key === 'Enter') addCustomVipUser(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAdminPanel(); });
 
-let currentTheme = localStorage.getItem('app_theme') || 'streamer';
-function applyTheme(themeName) {
-  currentTheme = themeName;
-  localStorage.setItem('app_theme', themeName);
-  document.body.classList.remove('theme-streamer', 'theme-minimalist');
-  document.body.classList.add(`theme-${themeName}`);
-}
-applyTheme(currentTheme);
 
 // ---------------------------------------------------------------------------
 // LOGIN / CADASTRO
@@ -493,16 +513,19 @@ function updateAuthUI() {
 }
 
 btnLogin.addEventListener('click', () => {
-  const user = authUsername.value.trim();
+  const typed = authUsername.value.trim();
   const pass = authPassword.value.trim();
-  if (!user || !pass) return showToast('Preencha usuário e senha!');
+  if (!typed || !pass) return showToast('Preencha usuário e senha!');
 
+  // A administradora sempre usa o mesmo nome, não importa maiúsculas/minúsculas
+  const user = typed.toLowerCase() === ADMIN_USER.toLowerCase() ? ADMIN_USER : typed;
   const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-  if (usersDb[user] && usersDb[user] === pass) {
-    currentUser = { username: user };
-    localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
-    updateAuthUI();
-  } else if (user.toLowerCase() === ADMIN_USER.toLowerCase() && pass === "777") {
+
+  const okByDb = !!usersDb[user] && usersDb[user] === pass;
+  // A senha padrão da admin só vale enquanto ela não trocar a senha no perfil
+  const okAdminDefault = user === ADMIN_USER && !usersDb[user] && pass === "777";
+
+  if (okByDb || okAdminDefault) {
     currentUser = { username: user };
     localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
     updateAuthUI();
@@ -517,6 +540,10 @@ btnRegister.addEventListener('click', () => {
   if (!user || !pass) return showToast('Digite usuário e senha para cadastrar!');
 
   const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
+  if (usersDb[user] || user.toLowerCase() === ADMIN_USER.toLowerCase()) {
+    return showToast('Esse usuário já existe. Use "Entrar" (a senha pode ser trocada no Perfil).');
+  }
+
   usersDb[user] = pass;
   localStorage.setItem('app_users_db', JSON.stringify(usersDb));
 
@@ -545,16 +572,13 @@ function applyDisplayName(val) {
   showToast('Nome de exibição atualizado!');
 }
 
-btnEditDisplayName.addEventListener('click', () => {
-  document.getElementById('profile-name-input').value = myProfile.name || '';
-  document.getElementById('profile-modal').classList.add('active');
-});
+btnEditDisplayName.addEventListener('click', openProfileModal);
 
 const btnSaveProfile = document.getElementById('btn-save-profile');
 if (btnSaveProfile) {
   btnSaveProfile.addEventListener('click', () => {
     applyDisplayName(document.getElementById('profile-name-input').value.trim());
-    document.getElementById('profile-modal').classList.remove('active');
+    closeProfileModal();
   });
 }
 
@@ -579,40 +603,43 @@ tabJoin.addEventListener('click', () => setLobbyTab('join'));
 tabCreate.addEventListener('click', () => setLobbyTab('create'));
 
 btnCreateRoom.addEventListener('click', () => {
+  if (joinBusy) return;
+  clearFormErrors();
   const room = normalizeRoomName(createRoomName.value);
   const pin = createRoomPin.value.trim();
-  if (!room) return showToast('Digite um nome válido (letras, números, - ou _).');
-  if (!pin) return showToast('Defina uma senha/PIN para a sala!');
+  if (!room) return showFormError('create', 'Digite um nome válido (letras, números, - ou _).', createRoomName);
+  if (!pin) return showFormError('create', 'Defina uma senha/PIN para a sala.', createRoomPin);
 
   const existing = getRoomsDatabase()[room];
   if (existing && existing.owner !== currentUser.username && !isAdminUser()) {
-    return showToast('Já existe uma sala com esse nome. Escolha outro ou use "Entrar".');
+    return showFormError('create', 'Já existe uma sala com esse nome. Escolha outro nome ou use "Entrar".', createRoomName);
   }
 
   // Se a sala já é sua, "criar" só atualiza o PIN e entra: não precisa recriar sempre
   saveRoomToDb(room, pin, existing ? existing.owner : currentUser.username);
-  createRoomName.value = '';
-  createRoomPin.value = '';
-  joinRoom(room, pin);
+  joinRoom(room, pin, 'create');
 });
 
 btnJoinRoom.addEventListener('click', () => {
+  if (joinBusy) return;
+  clearFormErrors();
   const room = normalizeRoomName(joinRoomName.value);
   const pin = joinRoomPin.value.trim();
-  if (!room) return showToast('Digite o nome da sala!');
-  if (!pin) return showToast('Digite a senha da sala!');
+  if (!room) return showFormError('join', 'Digite o nome da sala.', joinRoomName);
+  if (!pin) return showFormError('join', 'Digite a senha da sala.', joinRoomPin);
 
+  // Sala conhecida neste computador: confere aqui mesmo, sem tentar conectar
   const roomData = getRoomsDatabase()[room];
   if (roomData && String(roomData.pin).trim() !== pin) {
-    showToast('❌ Senha incorreta! Digite a senha certa.');
-    return;
+    return showFormError('join', '❌ Senha incorreta. Confira com quem criou a sala.', joinRoomPin);
   }
 
-  joinRoomName.value = '';
-  joinRoomPin.value = '';
-  joinRoom(room, pin);
+  joinRoom(room, pin, 'join');
 });
 
+[joinRoomName, joinRoomPin, createRoomName, createRoomPin].forEach(el => {
+  el.addEventListener('input', clearFormErrors);
+});
 createRoomPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnCreateRoom.click(); });
 joinRoomPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnJoinRoom.click(); });
 
@@ -647,63 +674,142 @@ function destroyPeer() {
 }
 
 function closeRemoteConnections() {
-  const dc = dataConn, mc = mainCall, sc = screenCall, isc = incomingScreenCall;
-  dataConn = null; mainCall = null; screenCall = null; incomingScreenCall = null;
+  const dc = dataConn, mc = mainCall, sc = screenCall, isc = incomingScreenCall, cc = camCall, icc = incomingCamCall;
+  dataConn = null; mainCall = null; screenCall = null; incomingScreenCall = null; camCall = null; incomingCamCall = null;
   targetPeerId = null;
   remoteVerified = false;
-  [mc, sc, isc].forEach(safeClose);
+  [mc, sc, isc, cc, icc].forEach(safeClose);
   safeClose(dc);
 }
 
-async function joinRoom(roomName, pin) {
-  leaveRoom({ silent: true });
+// Uma senha é "confiável" quando já foi confirmada antes (sala sua ou já visitada)
+function isPinTrusted(room, pin, origin) {
+  if (origin === 'create') return true;
+  const dbInfo = getRoomsDatabase()[room];
+  if (dbInfo && String(dbInfo.pin).trim() === pin) return true;
+  const recent = getRecentRooms().find(r => r.name === room);
+  return !!recent && String(recent.pin) === pin;
+}
 
-  currentRoomName = normalizeRoomName(roomName);
-  currentRoomPin = String(pin).trim();
-  if (!currentRoomName) return showToast('Nome de sala inválido.');
+function clearFormErrors() {
+  [joinError, createError].forEach(el => { el.classList.add('hidden'); el.innerText = ''; });
+  [joinRoomName, joinRoomPin, createRoomName, createRoomPin].forEach(el => el.classList.remove('input-error'));
+}
+
+function showFormError(kind, msg, field) {
+  setLobbyTab(kind); // 'join' | 'create'
+  const box = kind === 'create' ? createError : joinError;
+  box.innerText = msg;
+  box.classList.remove('hidden');
+  if (field) { field.classList.add('input-error'); field.focus(); }
+}
+
+function showJoinError(origin, room, msg) {
+  if (origin === 'create') return showFormError('create', msg, createRoomPin);
+  if (origin === 'list') { joinRoomName.value = room; joinRoomPin.value = ''; }
+  showFormError('join', msg, joinRoomPin);
+}
+
+function setJoinBusy(busy) {
+  joinBusy = busy;
+  btnJoinRoom.disabled = busy;
+  btnCreateRoom.disabled = busy;
+  btnJoinRoom.innerText = (busy && joinOrigin === 'join') ? '⏳ Verificando...' : '🔌 Entrar na sala';
+  btnCreateRoom.innerText = (busy && joinOrigin === 'create') ? '⏳ Verificando...' : '🚀 Criar e entrar';
+  myRoomsList.classList.toggle('busy', busy);
+}
+
+// Pede para entrar. A tela do lobby só some depois que a senha for confirmada;
+// se estiver errada, o erro aparece no próprio formulário.
+function joinRoom(roomName, pin, origin = 'join') {
+  if (joinBusy) return;
+  leaveRoom({ silent: true });
+  closeAdminPanel();
+
+  const name = normalizeRoomName(roomName);
+  const cleanPin = String(pin).trim();
+  if (!name) return showJoinError(origin, roomName, 'Nome de sala inválido.');
+
+  currentRoomName = name;
+  currentRoomPin = cleanPin;
+  joinOrigin = origin;
+  joinTrusted = isPinTrusted(name, cleanPin, origin);
+  roomEntered = false;
+  clearFormErrors();
 
   inRoom = true;
   roomSession++;
   const session = roomSession;
 
-  rememberRoom(currentRoomName, currentRoomPin);
-  closeAdminPanel();
-
-  const isVipRoom = (currentRoomName === VIP_ROOM_NAME);
-  document.querySelectorAll('.vip-only').forEach(el => el.classList.toggle('hidden', !isVipRoom));
-  document.getElementById('room-name-display').innerText = `🔒 Sala: ${currentRoomName}`;
-  lobbyScreen.classList.add('hidden');
+  setJoinBusy(true);
   setStatus('Conectando...');
-
-  isMicMuted = true;
-  applyMicButtonState();
   heartbeatTimer = setInterval(heartbeatTick, HEARTBEAT_MS);
+  joinTimeoutTimer = setTimeout(() => {
+    if (session === roomSession && !roomEntered) {
+      failJoin('Não foi possível conectar à sala. Confira o nome e sua internet e tente de novo.');
+    }
+  }, JOIN_VERIFY_TIMEOUT_MS);
 
-  await startMicrophone();
-  if (session !== roomSession) return; // saiu enquanto o microfone era liberado
   connectToRoom(session);
 }
 
+// Senha confirmada: agora sim entra na sala (some o lobby, liga o microfone)
+async function enterRoomUI(session) {
+  if (session !== roomSession || !inRoom) return;
+
+  if (!roomEntered) {
+    roomEntered = true;
+    clearTimeout(joinTimeoutTimer);
+    setJoinBusy(false);
+    rememberRoom(currentRoomName, currentRoomPin);
+    clearFormErrors();
+    [joinRoomName, joinRoomPin, createRoomName, createRoomPin].forEach(el => { el.value = ''; });
+
+    const isVipRoom = (currentRoomName === VIP_ROOM_NAME);
+    document.querySelectorAll('.vip-only').forEach(el => el.classList.toggle('hidden', !isVipRoom));
+    document.getElementById('room-name-display').innerText = `🔒 Sala: ${currentRoomName}`;
+    lobbyScreen.classList.add('hidden');
+
+    isMicMuted = true;
+    applyMicButtonState();
+    applySpeakerToAudioElements();
+  }
+
+  await startMicrophone();
+}
+
+// Não deu para entrar: volta para o formulário mostrando o motivo
+function failJoin(msg) {
+  const origin = joinOrigin;
+  const room = currentRoomName;
+  leaveRoom({ silent: true });
+  showJoinError(origin, room, msg);
+}
+
 function leaveRoom({ silent = false } = {}) {
-  if (inRoom) sendDataMessage({ type: 'BYE' });
+  if (inRoom && roomEntered) sendDataMessage({ type: 'BYE' });
 
   inRoom = false;
+  roomEntered = false;
   roomSession++;
   clearTimeout(reconnectTimer);
   clearTimeout(guestConnectTimer);
+  clearTimeout(joinTimeoutTimer);
   clearInterval(heartbeatTimer);
   heartbeatTimer = null;
+  setJoinBusy(false);
 
   stopScreenShare();
+  stopCamera();
 
   // Solta tudo; o fechamento real espera 200ms para o aviso (BYE) chegar
   const oldPeer = peer; peer = null;
-  const dc = dataConn, mc = mainCall, sc = screenCall, isc = incomingScreenCall;
-  dataConn = null; mainCall = null; screenCall = null; incomingScreenCall = null;
+  const dc = dataConn, mc = mainCall, sc = screenCall, isc = incomingScreenCall, icc = incomingCamCall;
+  dataConn = null; mainCall = null; screenCall = null; incomingScreenCall = null; incomingCamCall = null;
   targetPeerId = null;
   remoteVerified = false;
   setTimeout(() => {
-    [mc, sc, isc].forEach(safeClose);
+    [mc, sc, isc, icc].forEach(safeClose);
     safeClose(dc);
     try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
   }, 200);
@@ -717,11 +823,8 @@ function leaveRoom({ silent = false } = {}) {
   applyMicButtonState();
 
   chatDrawer.classList.remove('open');
-  notesDrawer.classList.remove('open');
   chatMessagesList.innerHTML = '';
   chatUnreadDot.classList.add('hidden');
-  const notesDot = document.getElementById('notes-unread-dot');
-  if (notesDot) notesDot.classList.add('hidden');
 
   resetRemoteState();
   setStatus('Aguardando...');
@@ -750,6 +853,11 @@ function tryBecomeHost(session) {
     isHostInstance = true;
     myPeerId = hostId;
     setStatus('Aguardando...');
+
+    if (!roomEntered) {
+      if (joinTrusted) enterRoomUI(session);
+      else failJoin('Ninguém está nessa sala agora, então não dá para conferir a senha. Peça para o dono entrar primeiro ou crie a sala em "Criar sala".');
+    }
   });
 
   p.on('connection', conn => {
@@ -886,6 +994,23 @@ function handleIncomingCall(call) {
         resetRemoteScreenView();
       }
     });
+  } else if (type === 'cam') {
+    const prev = incomingCamCall;
+    incomingCamCall = call;
+    if (prev) safeClose(prev);
+
+    call.answer();
+    call.on('stream', stream => {
+      remoteCam.srcObject = stream;
+      remoteCam.classList.remove('hidden');
+      avatarRemoteBox.classList.add('hidden');
+    });
+    call.on('close', () => {
+      if (incomingCamCall === call) {
+        incomingCamCall = null;
+        hideRemoteCam();
+      }
+    });
   } else {
     if (mainCall) safeClose(mainCall);
     mainCall = call;
@@ -980,25 +1105,32 @@ function handleDataMessage(data, session) {
         sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
         onRemoteJoined();
         if (screenStream) sendScreenCall(); // quem entrou depois já recebe a transmissão
+        if (camStream) sendCamCall();
       }
       break;
 
-    case 'PIN_OK': // chega no convidado
+    case 'PIN_OK': // chega no convidado: só agora ele entra de verdade na sala
       if (isHostInstance || !peer) break;
       remoteVerified = true;
       remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
       clearTimeout(guestConnectTimer);
-      sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
-      onRemoteJoined();
-      mainCall = peer.call(getHostPeerId(), getMainCallStream(), { metadata: { type: 'main' } });
-      attachMainCallEvents(mainCall);
-      if (screenStream) sendScreenCall();
+      (async () => {
+        await enterRoomUI(session);
+        if (session !== roomSession || !peer || !dataConn || !remoteVerified) return;
+        sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
+        onRemoteJoined();
+        mainCall = peer.call(getHostPeerId(), getMainCallStream(), { metadata: { type: 'main' } });
+        attachMainCallEvents(mainCall);
+        if (screenStream) sendScreenCall();
+        if (camStream) sendCamCall();
+      })();
       break;
 
-    case 'PIN_REJECTED':
-      showToast('❌ Senha da sala incorreta!');
-      forgetRoom(currentRoomName);
-      leaveRoom();
+    case 'PIN_REJECTED': // senha errada: volta para o formulário e mostra o erro lá
+      if (roomEntered) break;
+      if (joinOrigin === 'list') failJoin('A senha dessa sala mudou ou está incorreta. Digite a senha atual.');
+      else if (joinOrigin === 'create') failJoin('Já existe uma sala ativa com esse nome e outra senha. Escolha outro nome.');
+      else failJoin('❌ Senha incorreta. Confira com quem criou a sala.');
       break;
 
     case 'ROOM_FULL':
@@ -1052,6 +1184,7 @@ function resetRemoteState() {
   remoteProfile = makeEmptyRemoteProfile();
   remoteVoiceAudio.srcObject = null;
   resetRemoteScreenView();
+  hideRemoteCam();
   updateProfileUI();
 }
 
@@ -1131,12 +1264,46 @@ function getMainCallStream() {
   return new MediaStream(tracks);
 }
 
+async function openMicStream() {
+  const micId = getPref('app_mic_id');
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: micId ? { deviceId: { exact: micId } } : true,
+      video: false
+    });
+  } catch (err) {
+    if (!micId) throw err;
+    setPref('app_mic_id', ''); // o microfone salvo sumiu: usa o padrão
+    return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  }
+}
+
 async function startMicrophone() {
   if (micStream) return;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    micStream = await openMicStream();
     micStream.getAudioTracks().forEach(t => t.enabled = !isMicMuted);
   } catch (e) { console.warn('Sem mic:', e); }
+}
+
+// Troca de microfone no meio da call, sem derrubar a chamada
+async function switchMicrophone() {
+  if (!micStream) return;
+  try {
+    const newStream = await openMicStream();
+    const newTrack = newStream.getAudioTracks()[0];
+    newTrack.enabled = !isMicMuted;
+
+    if (mainCall && mainCall.peerConnection) {
+      const sender = mainCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
+      if (sender) await sender.replaceTrack(newTrack);
+    }
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = newStream;
+  } catch (e) {
+    console.warn('Erro ao trocar de microfone:', e);
+    showToast('Não foi possível trocar o microfone.');
+  }
 }
 
 function applyMicButtonState() {
@@ -1486,24 +1653,245 @@ chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') btnSendChat.click();
 });
 
+// ===========================================================================
+// CÂMERA
+// ===========================================================================
+function updateCamButton() {
+  btnToggleCam.classList.toggle('btn-highlight', !!camStream);
+  btnToggleCam.title = camStream ? 'Desligar câmera' : 'Ligar câmera';
+}
+
+function hideRemoteCam() {
+  remoteCam.srcObject = null;
+  remoteCam.classList.add('hidden');
+  avatarRemoteBox.classList.remove('hidden');
+}
+
+function sendCamCall() {
+  if (!camStream || !peer || !remoteVerified || !targetPeerId) return;
+  if (camCall) safeClose(camCall);
+  camCall = peer.call(targetPeerId, camStream, { metadata: { type: 'cam' } });
+}
+
+async function startCamera() {
+  if (camStream || !roomEntered) return;
+  const camId = getPref('app_cam_id');
+  const base = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+
+  try {
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: camId ? { ...base, deviceId: { exact: camId } } : base
+      });
+    } catch (err) {
+      if (!camId) throw err;
+      setPref('app_cam_id', ''); // a câmera salva sumiu: usa a padrão
+      camStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: base });
+    }
+  } catch (err) {
+    console.warn('Erro ao ligar a câmera:', err);
+    camStream = null;
+    showToast('Não foi possível ligar a câmera.');
+    return;
+  }
+
+  localCam.srcObject = camStream;
+  localCam.classList.remove('hidden');
+  avatarLocalBox.classList.add('hidden');
+  camStream.getVideoTracks()[0].onended = stopCamera;
+  updateCamButton();
+  sendCamCall();
+  refreshDeviceLists();
+}
+
+function stopCamera() {
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  if (camCall) {
+    safeClose(camCall);
+    camCall = null;
+  }
+  localCam.srcObject = null;
+  localCam.classList.add('hidden');
+  avatarLocalBox.classList.remove('hidden');
+  updateCamButton();
+}
+
+btnToggleCam.addEventListener('click', () => {
+  if (camStream) stopCamera();
+  else startCamera();
+});
+
+// ===========================================================================
+// DISPOSITIVOS: microfone, câmera e fone/caixa de som (headset)
+// ===========================================================================
+const SINK_SUPPORTED = 'setSinkId' in HTMLMediaElement.prototype;
+let deviceLabelsRequested = false;
+
+function getPref(key) { return localStorage.getItem(key) || ''; }
+function setPref(key, value) {
+  if (value) localStorage.setItem(key, value);
+  else localStorage.removeItem(key);
+}
+
+// Escolhe a saída de áudio (fone) das duas fontes de som da outra pessoa
+function applySpeakerToAudioElements() {
+  if (!SINK_SUPPORTED) return;
+  const id = getPref('app_speaker_id') || 'default';
+  [remoteVoiceAudio, remoteScreenAudio].forEach(el => {
+    el.setSinkId(id).catch(err => {
+      console.warn('Saída de áudio indisponível:', err);
+      setPref('app_speaker_id', '');
+      el.setSinkId('default').catch(() => {});
+    });
+  });
+}
+
+function fillDeviceSelect(select, devices, unlabeledName, savedId) {
+  select.innerHTML = '';
+  select.appendChild(new Option('Padrão do sistema', ''));
+  let n = 0;
+  devices.forEach(d => {
+    if (d.deviceId === 'default' || d.deviceId === 'communications') return;
+    n++;
+    select.appendChild(new Option(d.label || `${unlabeledName} ${n}`, d.deviceId));
+  });
+  select.value = Array.from(select.options).some(o => o.value === savedId) ? savedId : '';
+}
+
+async function refreshDeviceLists() {
+  let devices;
+  try { devices = await navigator.mediaDevices.enumerateDevices(); }
+  catch (e) { return; }
+
+  fillDeviceSelect(micSelect, devices.filter(d => d.kind === 'audioinput'), 'Microfone', getPref('app_mic_id'));
+  fillDeviceSelect(camSelect, devices.filter(d => d.kind === 'videoinput'), 'Câmera', getPref('app_cam_id'));
+  if (SINK_SUPPORTED) {
+    fillDeviceSelect(speakerSelect, devices.filter(d => d.kind === 'audiooutput'), 'Saída', getPref('app_speaker_id'));
+  } else {
+    speakerSelect.closest('.form-group').classList.add('hidden');
+  }
+}
+
+// Os nomes dos aparelhos só aparecem depois de uma permissão de uso
+async function ensureDeviceLabels() {
+  if (deviceLabelsRequested) return;
+  deviceLabelsRequested = true;
+  let devices = [];
+  try { devices = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return; }
+
+  const needAudio = devices.some(d => d.kind === 'audioinput' && !d.label);
+  const needVideo = devices.some(d => d.kind === 'videoinput' && !d.label);
+  const kinds = [];
+  if (needAudio) kinds.push('audio');
+  if (needVideo) kinds.push('video');
+
+  for (const kind of kinds) {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ [kind]: true });
+      s.getTracks().forEach(tr => tr.stop());
+    } catch (e) {}
+  }
+}
+
+async function openSettings() {
+  settingsModal.classList.add('active');
+  await ensureDeviceLabels();
+  await refreshDeviceLists();
+}
+
+micSelect.addEventListener('change', () => {
+  setPref('app_mic_id', micSelect.value);
+  switchMicrophone();
+});
+
+camSelect.addEventListener('change', async () => {
+  setPref('app_cam_id', camSelect.value);
+  if (camStream) {
+    stopCamera();
+    await startCamera();
+  }
+});
+
+speakerSelect.addEventListener('change', () => {
+  setPref('app_speaker_id', speakerSelect.value);
+  applySpeakerToAudioElements();
+});
+
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    if (settingsModal.classList.contains('active')) refreshDeviceLists();
+  });
+}
+
+// ===========================================================================
+// PERFIL: trocar a própria senha
+// ===========================================================================
+function showPwMessage(msg, ok = false) {
+  pwMessage.innerText = msg;
+  pwMessage.classList.remove('hidden');
+  pwMessage.classList.toggle('success', ok);
+}
+
+function resetPasswordForm() {
+  [pwCurrent, pwNew, pwConfirm].forEach(i => { i.value = ''; });
+  pwMessage.classList.add('hidden');
+  pwMessage.classList.remove('success');
+  pwMessage.innerText = '';
+}
+
+function openProfileModal() {
+  document.getElementById('profile-name-input').value = myProfile.name || '';
+  resetPasswordForm();
+  document.getElementById('profile-modal').classList.add('active');
+}
+
+function closeProfileModal() {
+  resetPasswordForm();
+  document.getElementById('profile-modal').classList.remove('active');
+}
+
+function changePassword() {
+  if (!currentUser) return;
+  const user = currentUser.username;
+  const current = pwCurrent.value.trim();
+  const next = pwNew.value.trim();
+  const confirmValue = pwConfirm.value.trim();
+
+  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
+  // A admin ainda sem senha própria usa a padrão ("777") como senha atual
+  const knownPass = usersDb[user] !== undefined ? usersDb[user] : (isAdminUser() ? '777' : null);
+
+  if (knownPass === null || current !== knownPass) return showPwMessage('Senha atual incorreta.');
+  if (next.length < 4) return showPwMessage('A nova senha precisa ter pelo menos 4 caracteres.');
+  if (next !== confirmValue) return showPwMessage('A confirmação não é igual à nova senha.');
+  if (next === current) return showPwMessage('A nova senha precisa ser diferente da atual.');
+
+  usersDb[user] = next;
+  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
+  resetPasswordForm();
+  showPwMessage('✅ Senha alterada com sucesso!', true);
+}
+
+btnChangePassword.addEventListener('click', changePassword);
+[pwCurrent, pwNew, pwConfirm].forEach(i => {
+  i.addEventListener('keydown', (e) => { if (e.key === 'Enter') changePassword(); });
+});
+
 // ---------------------------------------------------------------------------
 // MODAIS, GAVETAS E SAÍDA
 // ---------------------------------------------------------------------------
-document.getElementById('theme-select').addEventListener('change', (e) => applyTheme(e.target.value));
-document.getElementById('btn-open-settings').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('settings-modal').classList.add('active'); });
+document.getElementById('btn-open-settings').addEventListener('click', (e) => { e.stopPropagation(); openSettings(); });
 document.getElementById('btn-close-settings').addEventListener('click', () => document.getElementById('settings-modal').classList.remove('active'));
-document.getElementById('btn-open-profile').addEventListener('click', (e) => {
-  e.stopPropagation();
-  document.getElementById('profile-name-input').value = myProfile.name || '';
-  document.getElementById('profile-modal').classList.add('active');
-});
-document.getElementById('btn-close-profile').addEventListener('click', () => document.getElementById('profile-modal').classList.remove('active'));
+document.getElementById('btn-open-profile').addEventListener('click', (e) => { e.stopPropagation(); openProfileModal(); });
+document.getElementById('btn-close-profile').addEventListener('click', closeProfileModal);
 document.getElementById('btn-open-roulette').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('roulette-modal').classList.add('active'); });
 document.getElementById('btn-close-roulette').addEventListener('click', () => document.getElementById('roulette-modal').classList.remove('active'));
 document.getElementById('btn-open-bucket').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('bucket-modal').classList.add('active'); });
 document.getElementById('btn-close-bucket-top').addEventListener('click', () => document.getElementById('bucket-modal').classList.remove('active'));
-document.getElementById('btn-open-notes').addEventListener('click', (e) => { e.stopPropagation(); notesDrawer.classList.toggle('open'); });
-document.getElementById('btn-close-notes').addEventListener('click', () => notesDrawer.classList.remove('open'));
 
 // Desligar agora SAI da sala e volta ao lobby (sem recarregar o app)
 document.getElementById('btn-hangup').addEventListener('click', () => leaveRoom());
@@ -1515,4 +1903,5 @@ window.addEventListener('beforeunload', () => {
   try { if (peer) peer.destroy(); } catch (e) {}
 });
 
+applySpeakerToAudioElements();
 updateAuthUI();

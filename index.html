@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=18.0">
+  <link rel="stylesheet" href="style.css?v=19.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
-<body class="theme-streamer">
+<body>
 
   <!-- NOTIFICAÇÃO TOAST FLUTUANTE -->
   <div id="toast-notification" class="toast hidden"></div>
@@ -79,6 +79,7 @@
           <label for="join-room-pin">Senha / PIN da sala:</label>
           <input type="password" id="join-room-pin" placeholder="Digite a senha da sala">
         </div>
+        <p id="join-error" class="form-error hidden" role="alert"></p>
         <button id="btn-join-room" class="btn-primary">🔌 Entrar na sala</button>
       </div>
 
@@ -91,6 +92,7 @@
           <label for="create-room-pin">Senha / PIN da sala (obrigatório):</label>
           <input type="password" id="create-room-pin" placeholder="Crie um PIN (ex: 7777)">
         </div>
+        <p id="create-error" class="form-error hidden" role="alert"></p>
         <button id="btn-create-room" class="btn-primary">🚀 Criar e entrar</button>
       </div>
     </main>
@@ -131,10 +133,6 @@
       <button class="btn-icon badge-wrapper" id="btn-open-chat" title="Chat da Sala">
         💬
         <span class="unread-dot hidden" id="chat-unread-dot"></span>
-      </button>
-      <button class="btn-icon badge-wrapper" id="btn-open-notes" title="Bloco de Notas">
-        📝
-        <span class="unread-dot hidden" id="notes-unread-dot"></span>
       </button>
       <button class="btn-icon" id="btn-open-profile" title="Perfil">👤</button>
       <button class="btn-icon" id="btn-open-settings" title="Configurações & Tema">⚙️</button>
@@ -212,7 +210,7 @@
     <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
 
-  <aside id="chat-drawer" class="notes-drawer">
+  <aside id="chat-drawer" class="side-drawer">
     <div class="drawer-header">
       <h3>💬 Chat da Sala</h3>
       <button id="btn-close-chat" class="btn-sm btn-cancel">✕</button>
@@ -241,16 +239,6 @@
     </div>
   </div>
 
-  <aside id="notes-drawer" class="notes-drawer">
-    <div class="drawer-header">
-      <h3>📝 Bloco de Notas</h3>
-      <button id="btn-close-notes" class="btn-sm btn-cancel">✕</button>
-    </div>
-    <div class="drawer-body">
-      <textarea id="shared-notes-area" placeholder="Notas em tempo real..."></textarea>
-    </div>
-  </aside>
-
   <div id="roulette-modal" class="modal-backdrop">
     <div class="modal-content">
       <h3>🎲 Sorteador</h3>
@@ -267,11 +255,35 @@
     <div class="modal-content">
       <h3>👤 Perfil</h3>
       <div class="form-group">
-        <label>Nome de Exibição:</label>
+        <label for="profile-name-input">Nome de Exibição:</label>
         <input type="text" id="profile-name-input">
       </div>
       <div class="modal-actions">
-        <button id="btn-save-profile" class="btn-sm btn-highlight">Salvar</button>
+        <button id="btn-save-profile" class="btn-sm btn-highlight">Salvar nome</button>
+      </div>
+
+      <hr class="modal-divider">
+
+      <h4 class="modal-subtitle">🔑 Alterar minha senha</h4>
+      <div class="form-group">
+        <label for="pw-current">Senha atual:</label>
+        <input type="password" id="pw-current" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="pw-new">Nova senha (mínimo 4 caracteres):</label>
+        <input type="password" id="pw-new" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="pw-confirm">Repita a nova senha:</label>
+        <input type="password" id="pw-confirm" autocomplete="off">
+      </div>
+      <p id="pw-message" class="form-error hidden" role="alert"></p>
+      <div class="modal-actions">
+        <button id="btn-change-password" class="btn-sm btn-highlight">Alterar senha</button>
+      </div>
+
+      <hr class="modal-divider">
+      <div class="modal-actions">
         <button id="btn-close-profile" class="btn-sm btn-cancel">Fechar</button>
       </div>
     </div>
@@ -279,21 +291,18 @@
 
   <div id="settings-modal" class="modal-backdrop">
     <div class="modal-content">
-      <h3>⚙️ Configurações & Dispositivos</h3>
+      <h3>⚙️ Dispositivos</h3>
       <div class="form-group">
-        <label>🎨 Tema do App:</label>
-        <select id="theme-select" class="device-select">
-          <option value="streamer">🌌 Visual Dark Streamer (Discord/Twitch)</option>
-          <option value="minimalist">✨ Visual Minimalista (Meet/Arc)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Microfone:</label>
+        <label for="mic-select">🎙️ Microfone:</label>
         <select id="mic-select" class="device-select"></select>
       </div>
       <div class="form-group">
-        <label>Câmera:</label>
+        <label for="camera-select">📷 Câmera:</label>
         <select id="camera-select" class="device-select"></select>
+      </div>
+      <div class="form-group">
+        <label for="speaker-select">🎧 Fone / caixa de som (headset):</label>
+        <select id="speaker-select" class="device-select"></select>
       </div>
       <div class="modal-actions">
         <button id="btn-close-settings" class="btn-sm btn-cancel">Concluir</button>
@@ -336,6 +345,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=18.0"></script>
+  <script src="app.js?v=19.0"></script>
 </body>
 </html>
