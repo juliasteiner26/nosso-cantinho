@@ -1,6 +1,6 @@
-// --- CARGOS & CONTEXTO VIP ---
+// --- CARGOS ---
 const ADMIN_USER = "steiner777";
-const VIP_ROOM_NAME = "nosso-cantinho";
+const OLD_EXCLUSIVE_ROOM = "nosso-cantinho"; // sala antiga com PIN fixo no código (removida)
 
 // Prefixo dos IDs no servidor do PeerJS (evita colisão com outros apps)
 const PEER_PREFIX = "space777-";
@@ -12,6 +12,7 @@ const JOIN_VERIFY_TIMEOUT_MS = 20000; // tempo máximo para confirmar a senha an
 let currentUser = JSON.parse(localStorage.getItem('app_logged_user')) || null;
 let currentRoomName = '';
 let currentRoomPin = '';
+let currentRoomExclusive = false; // sala exclusiva: só entra quem sabe nome + senha
 let inRoom = false;
 let roomSession = 0;          // muda a cada entrada/saída: invalida tentativas antigas
 let roomEntered = false;      // já passou da tela de senha e está dentro da sala
@@ -87,9 +88,10 @@ const tabAdminUsers = document.getElementById('tab-admin-users');
 const tabAdminRooms = document.getElementById('tab-admin-rooms');
 const adminSearch = document.getElementById('admin-search');
 const adminList = document.getElementById('admin-list');
-const adminAddRow = document.getElementById('admin-add-row');
-const adminAddVip = document.getElementById('admin-add-vip');
-const btnAdminAddVip = document.getElementById('btn-admin-add-vip');
+const createExclusive = document.getElementById('create-exclusive');
+const rouletteModal = document.getElementById('roulette-modal');
+const rouletteInput = document.getElementById('roulette-options-input');
+const rouletteResult = document.getElementById('roulette-result-display');
 
 const createRoomName = document.getElementById('create-room-name');
 const createRoomPin = document.getElementById('create-room-pin');
@@ -182,58 +184,46 @@ function isAdminUser() {
 }
 
 // ---------------------------------------------------------------------------
-// VIPs, SALAS (banco local) E TEMA
+// SALAS (banco local) E CONTAS (admin)
 // ---------------------------------------------------------------------------
-function getVipUsers() {
-  return JSON.parse(localStorage.getItem('app_vip_users') || '[]');
-}
 
-function toggleUserVip(username) {
-  let vips = getVipUsers();
-  const index = vips.indexOf(username);
-  if (index >= 0) vips.splice(index, 1);
-  else vips.push(username);
-  localStorage.setItem('app_vip_users', JSON.stringify(vips));
-  renderAdminPanel();
-  renderMyRooms();
-}
 
-function addCustomVipUser() {
-  const username = adminAddVip.value.trim();
-  if (!username) return;
+// Admin: só mexe em contas (redefinir senha / excluir). Não dá acesso a nenhuma sala.
+const DEFAULT_RESET_PASSWORD = '123456';
 
+function resetUserPassword(username) {
   const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-  if (!usersDb[username]) {
-    usersDb[username] = "123456";
-    localStorage.setItem('app_users_db', JSON.stringify(usersDb));
-  }
+  if (!usersDb[username]) return;
+  if (!confirm(`Redefinir a senha de "${username}" para ${DEFAULT_RESET_PASSWORD}?`)) return;
+  usersDb[username] = DEFAULT_RESET_PASSWORD;
+  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
+  showToast(`Senha de ${username} redefinida para ${DEFAULT_RESET_PASSWORD}.`);
+}
 
-  let vips = getVipUsers();
-  if (!vips.includes(username)) {
-    vips.push(username);
-    localStorage.setItem('app_vip_users', JSON.stringify(vips));
-  }
-  adminAddVip.value = '';
+function deleteUser(username) {
+  if (!confirm(`Excluir a conta "${username}" deste computador?`)) return;
+  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
+  delete usersDb[username];
+  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
+  localStorage.removeItem(`app_recent_rooms:${username}`);
   renderAdminPanel();
 }
 
-function isUserVipOrAdmin() {
-  if (!currentUser) return false;
-  const user = currentUser.username.toLowerCase();
-  const vips = getVipUsers().map(v => v.toLowerCase());
-  return user === ADMIN_USER.toLowerCase() || vips.includes(user);
-}
+
+
+
 
 function getRoomsDatabase() {
   return JSON.parse(localStorage.getItem('app_rooms_db') || '{}');
 }
 
-function saveRoomToDb(name, pin, owner) {
+function saveRoomToDb(name, pin, owner, exclusive) {
   const db = getRoomsDatabase();
   const existing = db[name];
   db[name] = {
     pin: String(pin).trim(),
     owner: owner,
+    exclusive: exclusive === undefined ? !!(existing && existing.exclusive) : !!exclusive,
     created: existing && existing.created ? existing.created : Date.now()
   };
   localStorage.setItem('app_rooms_db', JSON.stringify(db));
@@ -247,12 +237,7 @@ function deleteRoomFromDb(name) {
   renderAdminPanel();
 }
 
-// Entra de novo numa sala salva (sem digitar o PIN)
-function enterSavedRoom(name) {
-  const info = getRoomsDatabase()[name];
-  if (!info) return showToast('Sala não encontrada.');
-  joinRoom(name, info.pin, 'list');
-}
+
 
 // ---------------------------------------------------------------------------
 // MINHAS SALAS (lista lateral do lobby)
@@ -267,11 +252,19 @@ function getRecentRooms() {
   catch (e) { return []; }
 }
 
-function rememberRoom(name, pin) {
+function rememberRoom(name, pin, exclusive = false) {
   if (!currentUser) return;
   const list = getRecentRooms().filter(r => r.name !== name);
-  list.unshift({ name, pin: String(pin), last: Date.now() });
+  list.unshift({ name, pin: String(pin), last: Date.now(), exclusive: !!exclusive });
   localStorage.setItem(recentsKey(), JSON.stringify(list.slice(0, 20)));
+}
+
+// A sala é exclusiva? (vale o que está salvo neste computador)
+function lookupRoomExclusive(name) {
+  const info = getRoomsDatabase()[name];
+  if (info) return !!info.exclusive;
+  const recent = getRecentRooms().find(r => r.name === name);
+  return !!recent && !!recent.exclusive;
 }
 
 function forgetRoom(name) {
@@ -293,24 +286,19 @@ function getMyRooms() {
       name: r.name,
       pin: info ? info.pin : r.pin,   // se a sala é sua, vale o PIN atual
       last: r.last,
-      owned: !!info && info.owner === currentUser.username
+      owned: !!info && info.owner === currentUser.username,
+      exclusive: info ? !!info.exclusive : !!r.exclusive
     });
   });
 
   Object.keys(db).forEach(n => {
     if (!seen.has(n) && db[n].owner === currentUser.username) {
       seen.add(n);
-      rooms.push({ name: n, pin: db[n].pin, last: 0, owned: true });
+      rooms.push({ name: n, pin: db[n].pin, last: 0, owned: true, exclusive: !!db[n].exclusive });
     }
   });
 
-  const isVipUser = isUserVipOrAdmin();
-  rooms.forEach(r => { r.vip = (r.name === VIP_ROOM_NAME && isVipUser); });
-  if (isVipUser && !seen.has(VIP_ROOM_NAME)) {
-    rooms.push({ name: VIP_ROOM_NAME, pin: '7777', last: 0, owned: false, vip: true });
-  }
-
-  rooms.sort((a, b) => (b.vip ? 1 : 0) - (a.vip ? 1 : 0) || b.last - a.last);
+  rooms.sort((a, b) => (b.exclusive ? 1 : 0) - (a.exclusive ? 1 : 0) || b.last - a.last);
   return rooms;
 }
 
@@ -332,18 +320,18 @@ function renderMyRooms() {
   }
 
   myRoomsList.innerHTML = rooms.map(r => {
-    const kind = r.vip ? 'Sala exclusiva' : (r.owned ? 'Criada por você' : 'Visitada');
+    const kind = r.exclusive ? 'Sala exclusiva' : (r.owned ? 'Criada por você' : 'Visitada');
     const when = formatLastUsed(r.last);
     const sub = when ? `${kind} · ${when}` : kind;
     const name = escapeHtml(r.name);
     return `
-      <div class="room-card-row${r.vip ? ' vip' : ''}">
+      <div class="room-card-row${r.exclusive ? ' exclusive' : ''}">
         <div class="room-card-info">
-          <strong>${name}</strong>
+          <strong>${r.exclusive ? '💖 ' : ''}${name}</strong>
           <span>${escapeHtml(sub)}</span>
         </div>
         <button class="btn-enter-room" data-action="enter-listed" data-name="${name}">Entrar</button>
-        ${r.name === VIP_ROOM_NAME ? '' : `<button class="btn-remove-room" data-action="remove-listed" data-name="${name}" aria-label="Remover ${name} da lista" title="Remover da lista">✕</button>`}
+        <button class="btn-remove-room" data-action="remove-listed" data-name="${name}" aria-label="Remover ${name} da lista" title="Remover da lista">✕</button>
       </div>
     `;
   }).join('');
@@ -352,9 +340,6 @@ function renderMyRooms() {
 function enterListedRoom(name) {
   const item = getMyRooms().find(r => r.name === name);
   if (!item) return showToast('Sala não encontrada.');
-  if (name === VIP_ROOM_NAME && !getRoomsDatabase()[name]) {
-    saveRoomToDb(VIP_ROOM_NAME, '7777', 'Exclusiva');
-  }
   joinRoom(item.name, item.pin, 'list');
 }
 
@@ -393,7 +378,6 @@ function setAdminTab(tab) {
 
 function renderAdminPanel() {
   if (!adminList) return;
-  adminAddRow.classList.toggle('hidden', adminTab !== 'users');
   if (!isAdminUser()) { adminList.innerHTML = ''; return; }
 
   const term = adminSearch.value.trim().toLowerCase();
@@ -401,33 +385,34 @@ function renderAdminPanel() {
 
   if (adminTab === 'users') {
     const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-    const vips = getVipUsers();
     const names = Object.keys(usersDb).filter(u =>
       u.toLowerCase() !== ADMIN_USER.toLowerCase() && u.toLowerCase().includes(term));
 
+    html = '<p class="lobby-empty">Contas criadas neste computador.</p>';
     if (names.length === 0) {
-      html = '<p class="lobby-empty">Nenhum usuário encontrado.</p>';
+      html += '<p class="lobby-empty">Nenhum usuário encontrado.</p>';
     } else {
       names.forEach(u => {
-        const isVip = vips.includes(u);
         const name = escapeHtml(u);
         html += `
           <div class="admin-row">
             <span class="mini-avatar">${escapeHtml((u.trim()[0] || '?').toUpperCase())}</span>
             <strong>${name}</strong>
-            ${isVip ? '<span class="tag-vip">VIP</span>' : ''}
             <span class="sp"></span>
-            <button class="sw${isVip ? ' on' : ''}" data-action="toggle-vip" data-name="${name}" aria-pressed="${isVip}" aria-label="VIP de ${name}"></button>
+            <button class="btn-ghost-sm" data-action="reset-password" data-name="${name}">Redefinir senha</button>
+            <button class="btn-danger-sm" data-action="delete-user" data-name="${name}">Excluir</button>
           </div>
         `;
       });
     }
   } else {
     const db = getRoomsDatabase();
-    const names = Object.keys(db).filter(n => n.includes(term));
+    // Salas exclusivas são privadas: nem a admin as vê ou mexe nelas por aqui
+    const names = Object.keys(db).filter(n => !db[n].exclusive && n.includes(term));
 
+    html = '<p class="lobby-empty">Salas exclusivas não aparecem aqui.</p>';
     if (names.length === 0) {
-      html = '<p class="lobby-empty">Nenhuma sala encontrada.</p>';
+      html += '<p class="lobby-empty">Nenhuma sala encontrada.</p>';
     } else {
       names.forEach(n => {
         const name = escapeHtml(n);
@@ -437,7 +422,6 @@ function renderAdminPanel() {
               <strong>${name}</strong>
               <span>dono: ${escapeHtml(db[n].owner)}</span>
             </div>
-            <button class="btn-enter-room" data-action="enter-room" data-name="${name}">Entrar</button>
             <button class="btn-danger-sm" data-action="delete-room" data-name="${name}">Excluir</button>
           </div>
         `;
@@ -464,9 +448,11 @@ adminList.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const name = btn.dataset.name;
-  if (btn.dataset.action === 'toggle-vip') toggleUserVip(name);
-  else if (btn.dataset.action === 'enter-room') enterSavedRoom(name);
+  if (btn.dataset.action === 'reset-password') resetUserPassword(name);
+  else if (btn.dataset.action === 'delete-user') deleteUser(name);
   else if (btn.dataset.action === 'delete-room') {
+    const info = getRoomsDatabase()[name];
+    if (info && info.exclusive) return; // exclusiva: nem a admin mexe
     if (confirm(`Excluir a sala "${name}"?`)) deleteRoomFromDb(name);
   }
 });
@@ -477,8 +463,6 @@ adminScrim.addEventListener('click', closeAdminPanel);
 tabAdminUsers.addEventListener('click', () => setAdminTab('users'));
 tabAdminRooms.addEventListener('click', () => setAdminTab('rooms'));
 adminSearch.addEventListener('input', renderAdminPanel);
-btnAdminAddVip.addEventListener('click', addCustomVipUser);
-adminAddVip.addEventListener('keydown', (e) => { if (e.key === 'Enter') addCustomVipUser(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAdminPanel(); });
 
 
@@ -611,13 +595,13 @@ btnCreateRoom.addEventListener('click', () => {
   if (!pin) return showFormError('create', 'Defina uma senha/PIN para a sala.', createRoomPin);
 
   const existing = getRoomsDatabase()[room];
-  if (existing && existing.owner !== currentUser.username && !isAdminUser()) {
+  if (existing && existing.owner !== currentUser.username) {
     return showFormError('create', 'Já existe uma sala com esse nome. Escolha outro nome ou use "Entrar".', createRoomName);
   }
 
   // Se a sala já é sua, "criar" só atualiza o PIN e entra: não precisa recriar sempre
-  saveRoomToDb(room, pin, existing ? existing.owner : currentUser.username);
-  joinRoom(room, pin, 'create');
+  saveRoomToDb(room, pin, existing ? existing.owner : currentUser.username, createExclusive.checked);
+  joinRoom(room, pin, 'create', createExclusive.checked);
 });
 
 btnJoinRoom.addEventListener('click', () => {
@@ -721,7 +705,7 @@ function setJoinBusy(busy) {
 
 // Pede para entrar. A tela do lobby só some depois que a senha for confirmada;
 // se estiver errada, o erro aparece no próprio formulário.
-function joinRoom(roomName, pin, origin = 'join') {
+function joinRoom(roomName, pin, origin = 'join', exclusiveFlag = false) {
   if (joinBusy) return;
   leaveRoom({ silent: true });
   closeAdminPanel();
@@ -734,6 +718,7 @@ function joinRoom(roomName, pin, origin = 'join') {
   currentRoomPin = cleanPin;
   joinOrigin = origin;
   joinTrusted = isPinTrusted(name, cleanPin, origin);
+  currentRoomExclusive = origin === 'create' ? !!exclusiveFlag : lookupRoomExclusive(name);
   roomEntered = false;
   clearFormErrors();
 
@@ -761,13 +746,14 @@ async function enterRoomUI(session) {
     roomEntered = true;
     clearTimeout(joinTimeoutTimer);
     setJoinBusy(false);
-    rememberRoom(currentRoomName, currentRoomPin);
+    rememberRoom(currentRoomName, currentRoomPin, currentRoomExclusive);
     clearFormErrors();
     [joinRoomName, joinRoomPin, createRoomName, createRoomPin].forEach(el => { el.value = ''; });
 
-    const isVipRoom = (currentRoomName === VIP_ROOM_NAME);
-    document.querySelectorAll('.vip-only').forEach(el => el.classList.toggle('hidden', !isVipRoom));
-    document.getElementById('room-name-display').innerText = `🔒 Sala: ${currentRoomName}`;
+    createExclusive.checked = false;
+    // Ferramentas extras (sorteador) só aparecem na sala exclusiva
+    document.querySelectorAll('.exclusive-only').forEach(el => el.classList.toggle('hidden', !currentRoomExclusive));
+    document.getElementById('room-name-display').innerText = `${currentRoomExclusive ? '💖' : '🔒'} Sala: ${currentRoomName}`;
     lobbyScreen.classList.add('hidden');
 
     isMicMuted = true;
@@ -981,7 +967,9 @@ function handleIncomingCall(call) {
     if (prev) safeClose(prev);
 
     call.answer();
+    let announced = false; // o PeerJS pode avisar mais de uma vez; o som toca uma só
     call.on('stream', stream => {
+      if (!announced) { announced = true; playAlertSound('screen'); }
       mainStream.srcObject = stream;
       remoteScreenAudio.srcObject = stream; // áudio só do app compartilhado
       mainStream.classList.remove('hidden');
@@ -1101,9 +1089,10 @@ function handleDataMessage(data, session) {
       } else {
         remoteVerified = true;
         remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
-        sendDataMessage({ type: 'PIN_OK' });
+        sendDataMessage({ type: 'PIN_OK', exclusive: currentRoomExclusive });
         sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
         onRemoteJoined();
+        playAlertSound('join'); // alguém entrou na sala
         if (screenStream) sendScreenCall(); // quem entrou depois já recebe a transmissão
         if (camStream) sendCamCall();
       }
@@ -1112,6 +1101,7 @@ function handleDataMessage(data, session) {
     case 'PIN_OK': // chega no convidado: só agora ele entra de verdade na sala
       if (isHostInstance || !peer) break;
       remoteVerified = true;
+      currentRoomExclusive = !!data.exclusive; // o anfitrião diz se a sala é exclusiva
       remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
       clearTimeout(guestConnectTimer);
       (async () => {
@@ -1136,6 +1126,15 @@ function handleDataMessage(data, session) {
     case 'ROOM_FULL':
       showToast('A sala está ocupada. Tentando de novo...');
       scheduleReconnect(session, 4000);
+      break;
+
+    case 'ROULETTE': // sorteio feito pela outra pessoa
+      if (!remoteVerified || !currentRoomExclusive) break;
+      if (Array.isArray(data.options) && typeof data.pick === 'string') {
+        rouletteInput.value = data.options.slice(0, 50).map(o => String(o).slice(0, 80)).join('\n');
+        showRouletteResult(data.pick.slice(0, 80));
+        rouletteModal.classList.add('active');
+      }
       break;
 
     case 'PROFILE_UPDATE':
@@ -1881,6 +1880,134 @@ btnChangePassword.addEventListener('click', changePassword);
   i.addEventListener('keydown', (e) => { if (e.key === 'Enter') changePassword(); });
 });
 
+// ===========================================================================
+// SORTEADOR (só na sala exclusiva): o resultado aparece para os dois
+// ===========================================================================
+function showRouletteResult(pick) {
+  rouletteResult.innerText = `🎯 ${pick}`;
+}
+
+function spinRoulette() {
+  const options = rouletteInput.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 50);
+  if (options.length < 2) return showToast('Coloque pelo menos 2 opções (uma por linha).');
+  const pick = options[Math.floor(Math.random() * options.length)];
+  showRouletteResult(pick);
+  sendDataMessage({ type: 'ROULETTE', options, pick });
+}
+
+document.getElementById('btn-spin-roulette').addEventListener('click', spinRoulette);
+
+// Remove a antiga "sala exclusiva" com PIN fixo que vinha escrita no código
+function migrateOldSetup() {
+  const db = getRoomsDatabase();
+  if (db[OLD_EXCLUSIVE_ROOM] && db[OLD_EXCLUSIVE_ROOM].owner === 'Exclusiva') {
+    delete db[OLD_EXCLUSIVE_ROOM];
+    localStorage.setItem('app_rooms_db', JSON.stringify(db));
+  }
+  Object.keys(localStorage).filter(k => k.startsWith('app_recent_rooms:')).forEach(k => {
+    try {
+      const list = JSON.parse(localStorage.getItem(k) || '[]');
+      const cleaned = list.filter(r => !(r.name === OLD_EXCLUSIVE_ROOM && String(r.pin) === '7777'));
+      if (cleaned.length !== list.length) localStorage.setItem(k, JSON.stringify(cleaned));
+    } catch (e) {}
+  });
+  localStorage.removeItem('app_vip_users'); // lista de VIPs não existe mais
+}
+
+// ===========================================================================
+// AVISOS SONOROS (alguém entrou na sala / começou a compartilhar a tela)
+// Os sons são gerados aqui mesmo (sem arquivos) e saem no fone escolhido
+// ===========================================================================
+let alertCtx = null;
+let alertSinkId = null;
+
+async function playAlertSound(kind) {
+  try {
+    if (!alertCtx) alertCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = alertCtx;
+
+    // Segue o fone/caixa de som escolhido nas configurações
+    const wanted = getPref('app_speaker_id');
+    if (typeof ctx.setSinkId === 'function' && wanted !== alertSinkId) {
+      alertSinkId = wanted;
+      try { await ctx.setSinkId(wanted); } catch (e) { console.warn('Saída do aviso indisponível:', e); }
+    }
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    // entrada: dois toques subindo | tela: três toques rápidos subindo
+    const isScreen = kind === 'screen';
+    const notes = isScreen ? [523.25, 659.25, 783.99] : [659.25, 880.0];
+    const step = isScreen ? 0.09 : 0.13;
+    const t0 = ctx.currentTime + 0.02;
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = t0 + i * step;
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + step + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + step + 0.2);
+    });
+  } catch (e) {
+    console.warn('Som de aviso indisponível:', e);
+  }
+}
+
+// ===========================================================================
+// TELA CHEIA E CONVITE
+// ===========================================================================
+const btnFullscreen = document.getElementById('btn-fullscreen');
+const btnCopyLink = document.getElementById('btn-copy-link');
+
+btnFullscreen.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (e) {
+    console.warn('Tela cheia indisponível:', e);
+    showToast('Não foi possível alternar a tela cheia.');
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  const on = !!document.fullscreenElement;
+  btnFullscreen.classList.toggle('btn-highlight', on);
+  btnFullscreen.title = on ? 'Sair da tela cheia' : 'Tela cheia';
+});
+
+// Copia um convite com o nome e a senha da sala (não existe link público: o app não tem servidor)
+function copyTextFallback(text) {
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  area.remove();
+  return ok;
+}
+
+btnCopyLink.addEventListener('click', async () => {
+  if (!inRoom || !roomEntered) return;
+  const invite = `Entra comigo no Space 777!\nSala: ${currentRoomName}\nSenha: ${currentRoomPin}`;
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(invite);
+    ok = true;
+  } catch (e) {
+    ok = copyTextFallback(invite);
+  }
+  showToast(ok ? '📋 Convite copiado: nome e senha da sala!' : 'Não foi possível copiar o convite.');
+});
+
 // ---------------------------------------------------------------------------
 // MODAIS, GAVETAS E SAÍDA
 // ---------------------------------------------------------------------------
@@ -1890,8 +2017,6 @@ document.getElementById('btn-open-profile').addEventListener('click', (e) => { e
 document.getElementById('btn-close-profile').addEventListener('click', closeProfileModal);
 document.getElementById('btn-open-roulette').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('roulette-modal').classList.add('active'); });
 document.getElementById('btn-close-roulette').addEventListener('click', () => document.getElementById('roulette-modal').classList.remove('active'));
-document.getElementById('btn-open-bucket').addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('bucket-modal').classList.add('active'); });
-document.getElementById('btn-close-bucket-top').addEventListener('click', () => document.getElementById('bucket-modal').classList.remove('active'));
 
 // Desligar agora SAI da sala e volta ao lobby (sem recarregar o app)
 document.getElementById('btn-hangup').addEventListener('click', () => leaveRoom());
@@ -1903,5 +2028,6 @@ window.addEventListener('beforeunload', () => {
   try { if (peer) peer.destroy(); } catch (e) {}
 });
 
+migrateOldSetup();
 applySpeakerToAudioElements();
 updateAuthUI();

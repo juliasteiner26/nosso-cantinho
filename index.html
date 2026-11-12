@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=19.0">
+  <link rel="stylesheet" href="style.css?v=21.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -92,6 +92,13 @@
           <label for="create-room-pin">Senha / PIN da sala (obrigatório):</label>
           <input type="password" id="create-room-pin" placeholder="Crie um PIN (ex: 7777)">
         </div>
+        <label class="check-row" for="create-exclusive">
+          <input type="checkbox" id="create-exclusive">
+          <span>
+            <strong>💖 Sala exclusiva</strong>
+            <small>Só entra quem souber o nome e a senha (nem a admin tem acesso especial). Libera o sorteador para vocês.</small>
+          </span>
+        </label>
         <p id="create-error" class="form-error hidden" role="alert"></p>
         <button id="btn-create-room" class="btn-primary">🚀 Criar e entrar</button>
       </div>
@@ -110,10 +117,6 @@
       </div>
       <input type="text" id="admin-search" class="admin-input" placeholder="Buscar usuário" aria-label="Buscar">
       <div id="admin-list" class="admin-list"></div>
-      <div id="admin-add-row" class="admin-add-row">
-        <input type="text" id="admin-add-vip" class="admin-input" placeholder="Adicionar VIP pelo nome" aria-label="Adicionar VIP pelo nome">
-        <button id="btn-admin-add-vip" class="btn-sm">Adicionar</button>
-      </div>
     </aside>
   </div>
 
@@ -122,14 +125,13 @@
     <div class="header-left">
       <div class="room-info-badge" id="room-info-badge">
         <span id="room-name-display">🔒 Sala: --</span>
-        <button id="btn-copy-link" class="btn-copy" title="Copiar Link">📋 Link</button>
+        <button id="btn-copy-link" class="btn-copy" title="Copiar convite (nome e senha da sala)">📋 Convite</button>
       </div>
       <span id="status-badge" class="badge">Aguardando...</span>
     </div>
 
     <div class="header-right">
-      <button class="btn-icon vip-only hidden" id="btn-open-bucket" title="Metas & Planos">📋</button>
-      <button class="btn-icon vip-only hidden" id="btn-open-roulette" title="Sorteador">🎲</button>
+      <button class="btn-icon exclusive-only hidden" id="btn-open-roulette" title="Sorteador">🎲</button>
       <button class="btn-icon badge-wrapper" id="btn-open-chat" title="Chat da Sala">
         💬
         <span class="unread-dot hidden" id="chat-unread-dot"></span>
@@ -206,7 +208,7 @@
 
     <div class="call-timer-badge" id="call-timer">⏱️ 00:00:00</div>
 
-    <button id="btn-fullscreen" class="dock-btn">⛶</button>
+    <button id="btn-fullscreen" class="dock-btn" title="Tela cheia">⛶</button>
     <button id="btn-hangup" class="dock-btn btn-danger">📞</button>
   </footer>
 
@@ -223,21 +225,6 @@
       </div>
     </div>
   </aside>
-
-  <div id="bucket-modal" class="modal-backdrop">
-    <div class="modal-content" style="max-width: 520px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h3>📋 Planos & Listas Exclusivas</h3>
-        <button id="btn-close-bucket-top" class="btn-sm btn-cancel">✕</button>
-      </div>
-      <div id="bucket-categories-bar" class="bucket-tabs-container" style="margin-top:10px;"></div>
-      <div style="display:flex; gap:6px; margin: 12px 0 8px 0;">
-        <input type="text" id="new-bucket-item-input" placeholder="Adicionar item..." style="flex:1;">
-        <button id="btn-add-bucket-item" class="btn-sm btn-highlight">Adicionar</button>
-      </div>
-      <div id="bucket-items-list" class="bucket-items-list"></div>
-    </div>
-  </div>
 
   <div id="roulette-modal" class="modal-backdrop">
     <div class="modal-content">
@@ -345,6 +332,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=19.0"></script>
+  <script src="app.js?v=21.0"></script>
 </body>
 </html>
