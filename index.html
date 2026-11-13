@@ -2,9 +2,10 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Space 777 - Salas & Transmissão</title>
-  <link rel="stylesheet" href="style.css?v=21.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#080a0f">
+  <title>Space⁷⁷⁷</title>
+  <link rel="stylesheet" href="style.css?v=24.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -12,11 +13,16 @@
   <!-- NOTIFICAÇÃO TOAST FLUTUANTE -->
   <div id="toast-notification" class="toast hidden"></div>
 
+  <!-- CELULAR: o navegador pode bloquear o som até alguém tocar na tela -->
+  <div id="audio-unlock" class="audio-unlock hidden">
+    <button id="btn-audio-unlock" class="btn-primary">🔊 Toque para ativar o som</button>
+  </div>
+
   <!-- TELA 1: LOGIN / CADASTRO -->
   <div id="auth-screen" class="lobby-backdrop">
     <div class="lobby-card">
       <div class="lobby-header">
-        <h2>🚀 Space 777</h2>
+        <h2> Space⁷⁷⁷</h2>
         <p>Faça login para acessar o sistema de salas</p>
       </div>
 
@@ -41,9 +47,14 @@
   <div id="lobby-screen" class="lobby-screen hidden">
 
     <aside class="lobby-side">
-      <h2 class="lobby-brand">🚀 Space 777</h2>
+      <h2 class="lobby-brand"> Space⁷⁷⁷</h2>
       <div class="lobby-caption">Minhas salas</div>
       <div id="my-rooms-list" class="my-rooms"></div>
+
+      <div id="update-banner" class="update-banner hidden">
+        <span id="update-text"></span>
+        <button id="btn-install-update" class="btn-sm hidden">Reiniciar e atualizar</button>
+      </div>
 
       <div class="lobby-user">
         <span id="sidebar-user-avatar" class="user-avatar">?</span>
@@ -54,6 +65,7 @@
         <button id="btn-edit-display-name" class="btn-sm btn-cancel" title="Mudar o nome que aparece na chamada">Editar</button>
       </div>
       <button id="btn-logout" class="btn-secondary-action">Sair da conta</button>
+      <span id="app-version" class="app-version"></span>
     </aside>
 
     <main class="lobby-main">
@@ -63,7 +75,7 @@
         <span class="spacer"></span>
         <button id="btn-open-admin" class="btn-secondary-action hidden">Painel admin</button>
       </div>
-      <p id="lobby-hint" class="lobby-hint">Use o nome e a senha que seu amigo passou. As salas que você já usou ficam na lista ao lado.</p>
+      <p id="lobby-hint" class="lobby-hint">Use o nome e a senha que seu amigo passou. As salas que você já usou ficam salvas em "Minhas salas".</p>
 
       <div class="lobby-tabs">
         <button id="tab-join" class="tab-btn active" aria-pressed="true">Entrar</button>
@@ -125,7 +137,6 @@
     <div class="header-left">
       <div class="room-info-badge" id="room-info-badge">
         <span id="room-name-display">🔒 Sala: --</span>
-        <button id="btn-copy-link" class="btn-copy" title="Copiar convite (nome e senha da sala)">📋 Convite</button>
       </div>
       <span id="status-badge" class="badge">Aguardando...</span>
     </div>
@@ -146,6 +157,8 @@
 
     <!-- ÁUDIO DA TRANSMISSÃO DA OUTRA PESSOA -->
     <audio id="remote-screen-audio" autoplay playsinline></audio>
+
+    <div id="screen-switcher" class="screen-switcher hidden"></div>
 
     <div id="volume-hud" class="volume-hud hidden">
       <span id="hud-icon">🎙️</span>
@@ -168,24 +181,15 @@
         </span>
       </div>
 
-      <div class="cam-box streamer-card" id="box-remote">
-        <div class="avatar-placeholder" id="avatar-remote">
-          <div class="avatar-circle">
-            <img id="avatar-img-remote" src="" alt="Avatar Remoto">
-          </div>
-          <span class="avatar-name" id="avatar-name-remote">Convidado</span>
-          <span class="avatar-status" id="avatar-status-remote">Aguardando...</span>
+      <div class="cam-box streamer-card" id="box-waiting">
+        <div class="avatar-placeholder">
+          <div class="avatar-circle">⏳</div>
+          <span class="avatar-name">Aguardando alguém entrar...</span>
+          <span class="avatar-status">A sala continua aberta para quem chegar</span>
         </div>
-        <video id="remote-cam" autoplay playsinline class="hidden"></video>
-        <span class="cam-label" id="label-remote">
-          <span id="name-tag-remote">Convidado</span>
-          <span id="mute-indicator-remote" class="mute-indicator hidden">🔇</span>
-        </span>
       </div>
     </div>
   </main>
-
-  <audio id="remote-voice-audio" autoplay playsinline></audio>
 
   <footer id="main-footer">
     <button id="btn-toggle-mic" class="dock-btn btn-danger">🔇</button>
@@ -332,6 +336,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=21.0"></script>
+  <script src="app.js?v=24.0"></script>
 </body>
 </html>

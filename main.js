@@ -4,6 +4,18 @@ const path = require('path');
 
 let mainWindow;
 
+// Se você renomear o app, a pasta de dados muda e as contas/salas salvas "somem".
+// Para manter tudo, coloque aqui o nome da pasta antiga (veja em %APPDATA%).
+const LEGACY_DATA_FOLDER = ''; // ex.: 'nosso-cantinho'
+if (LEGACY_DATA_FOLDER) {
+  app.setPath('userData', path.join(app.getPath('appData'), LEGACY_DATA_FOLDER));
+}
+
+// Mantém a chamada firme mesmo com a janela minimizada ou coberta por outro app
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
 // ---------------------------------------------------------------------------
 // FORMATO DO ÁUDIO QUE A LIB ENTREGA (PCM cru)
 // Se a transmissão sair com som acelerado, grave ou chiado, o problema é aqui:
@@ -143,15 +155,56 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      // Com o app minimizado (jogando, por exemplo) o Chromium atrasa os
+      // temporizadores; isso faria a outra pessoa achar que você saiu da sala.
+      backgroundThrottling: false
     }
   });
 
   mainWindow.loadFile('index.html');
 }
 
+// ---------------------------------------------------------------------------
+// ATUALIZAÇÃO AUTOMÁTICA (só no app instalado; usa os Releases do GitHub)
+// ---------------------------------------------------------------------------
+function sendUpdateStatus(status) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('UPDATE_STATUS', status);
+  }
+}
+
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // em desenvolvimento (npm start) não procura atualização
+
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (err) {
+    console.warn('electron-updater não instalado:', err.message);
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true; // se você só fechar o app, ele atualiza ao sair
+
+  autoUpdater.on('update-available', (info) => sendUpdateStatus({ state: 'available', version: info.version }));
+  autoUpdater.on('download-progress', (p) => sendUpdateStatus({ state: 'downloading', percent: Math.round(p.percent) }));
+  autoUpdater.on('update-downloaded', (info) => sendUpdateStatus({ state: 'ready', version: info.version }));
+  autoUpdater.on('error', (err) => console.warn('Erro na atualização:', err && err.message));
+
+  ipcMain.handle('INSTALL_UPDATE', () => autoUpdater.quitAndInstall());
+
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 4 * 60 * 60 * 1000); // confere de novo a cada 4 horas
+}
+
+ipcMain.handle('GET_APP_VERSION', () => app.getVersion());
+
 app.whenReady().then(() => {
   createWindow();
+  setupAutoUpdate();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

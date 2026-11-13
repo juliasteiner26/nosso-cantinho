@@ -6,8 +6,21 @@ const OLD_EXCLUSIVE_ROOM = "nosso-cantinho"; // sala antiga com PIN fixo no cód
 const PEER_PREFIX = "space777-";
 const HEARTBEAT_MS = 2000;            // ping a cada 2s
 const HEARTBEAT_TIMEOUT_MS = 8000;    // sem sinal por 8s = a pessoa caiu
-const GUEST_CONNECT_TIMEOUT_MS = 9000;
+const PEER_PROBE_TIMEOUT_MS = 5000;   // tempo para uma vaga de ID responder
 const JOIN_VERIFY_TIMEOUT_MS = 20000; // tempo máximo para confirmar a senha antes de desistir
+
+// Pessoas por sala (a sala exclusiva é sempre de 2). Como cada pessoa se liga a todas
+// as outras (não há servidor no meio), salas grandes pesam na internet de quem transmite.
+const MAX_ROOM_SIZE = 8;
+const SLOT_COUNT = 12;   // quantas "vagas" de ID são testadas (sobra para vagas de quem caiu)
+
+// Servidores para as pessoas se acharem. Se algum amigo não conseguir conectar (rede muito
+// fechada), adicione um servidor TURN aqui, por exemplo:
+// { urls: 'turn:SEU_SERVIDOR:3478', username: 'USUARIO', credential: 'SENHA' }
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+// Limite de upload (kbps) dividido entre os espectadores da sua tela
+const SCREEN_UPLOAD_BUDGET_KBPS = { '1080p60': 12000, '720p60': 8000, '1080p30': 8000 };
 
 let currentUser = JSON.parse(localStorage.getItem('app_logged_user')) || null;
 let currentRoomName = '';
@@ -19,30 +32,26 @@ let roomEntered = false;      // já passou da tela de senha e está dentro da s
 let joinOrigin = 'join';      // de onde veio o pedido: 'join' | 'create' | 'list'
 let joinTrusted = false;      // senha já conhecida/confirmada (sala sua ou já visitada)
 let joinBusy = false;         // verificando a senha
+let joinSawFull = false;      // alguém respondeu "sala cheia"
 let joinTimeoutTimer = null;
 let myPeerId = '';
-let targetPeerId = null;
+let mySlot = -1;
 let peer = null;
+let peers = new Map();        // ID da outra pessoa -> { conn, perfil, chamadas, cartão... }
+let probesPending = 0;        // vagas ainda sendo testadas
 let isMicMuted = true;
-let isHostInstance = false;
-let remoteVerified = false;   // o outro lado já provou que sabe o PIN
-let lastSeen = 0;
 
 let reconnectTimer = null;
-let guestConnectTimer = null;
 let heartbeatTimer = null;
 let callTimerInterval = null;
 let callStartedAt = 0;
 
 let micStream = null;
 let camStream = null;
-let camCall = null;           // câmera que EU envio
-let incomingCamCall = null;   // câmera que EU assisto
 let screenStream = null;
-let mainCall = null;
-let screenCall = null;          // transmissão que EU envio
-let incomingScreenCall = null;  // transmissão que EU assisto
-let dataConn = null;
+let screenQuality = '720p60';
+let activeScreenId = null;    // de quem é a transmissão exibida
+let masterVoiceVolume = 1;
 
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%235865f2'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
@@ -51,11 +60,6 @@ let myProfile = {
   avatar: defaultAvatar,
   status: '🟢 Disponível'
 };
-
-function makeEmptyRemoteProfile() {
-  return { name: 'Convidado', avatar: defaultAvatar, status: 'Aguardando...' };
-}
-let remoteProfile = makeEmptyRemoteProfile();
 
 // ---------------------------------------------------------------------------
 // ELEMENTOS DA PÁGINA
@@ -110,7 +114,6 @@ const muteIndicatorLocal = document.getElementById('mute-indicator-local');
 const screenPickerModal = document.getElementById('screen-picker-modal');
 const screenSourcesList = document.getElementById('screen-sources-list');
 
-const remoteVoiceAudio = document.getElementById('remote-voice-audio');
 const remoteMicVolumeSlider = document.getElementById('remote-mic-volume');
 const micVolValueLabel = document.getElementById('mic-vol-value');
 const remoteScreenAudio = document.getElementById('remote-screen-audio');
@@ -130,9 +133,13 @@ const createError = document.getElementById('create-error');
 
 const btnToggleCam = document.getElementById('btn-toggle-cam');
 const localCam = document.getElementById('local-cam');
-const remoteCam = document.getElementById('remote-cam');
 const avatarLocalBox = document.getElementById('avatar-local');
-const avatarRemoteBox = document.getElementById('avatar-remote');
+const waitingCard = document.getElementById('box-waiting');
+const screenSwitcher = document.getElementById('screen-switcher');
+const updateBanner = document.getElementById('update-banner');
+const updateText = document.getElementById('update-text');
+const btnInstallUpdate = document.getElementById('btn-install-update');
+const appVersionEl = document.getElementById('app-version');
 
 const settingsModal = document.getElementById('settings-modal');
 const micSelect = document.getElementById('mic-select');
@@ -388,7 +395,7 @@ function renderAdminPanel() {
     const names = Object.keys(usersDb).filter(u =>
       u.toLowerCase() !== ADMIN_USER.toLowerCase() && u.toLowerCase().includes(term));
 
-    html = '<p class="lobby-empty">Contas criadas neste computador.</p>';
+    html = '<p class="lobby-empty">Contas criadas neste aparelho.</p>';
     if (names.length === 0) {
       html += '<p class="lobby-empty">Nenhum usuário encontrado.</p>';
     } else {
@@ -552,7 +559,7 @@ function applyDisplayName(val) {
   if (profileInput) profileInput.value = myProfile.name;
   updateSidebarUser();
   updateProfileUI();
-  if (remoteVerified) sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
+  broadcast({ type: 'PROFILE_UPDATE', profile: myProfile });
   showToast('Nome de exibição atualizado!');
 }
 
@@ -579,8 +586,8 @@ function setLobbyTab(tab) {
   tabCreate.setAttribute('aria-pressed', String(!isJoin));
   lobbyTitle.innerText = isJoin ? 'Entrar numa sala' : 'Criar uma sala';
   lobbyHint.innerText = isJoin
-    ? 'Use o nome e a senha que seu amigo passou. As salas que você já usou ficam na lista ao lado.'
-    : 'Escolha um nome e um PIN. Depois é só voltar pela lista ao lado, sem criar de novo.';
+    ? 'Use o nome e a senha que seu amigo passou. As salas que você já usou ficam salvas em "Minhas salas".'
+    : 'Escolha um nome e um PIN. Depois é só voltar por "Minhas salas", sem criar de novo.';
 }
 
 tabJoin.addEventListener('click', () => setLobbyTab('join'));
@@ -628,21 +635,24 @@ createRoomPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnCre
 joinRoomPin.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnJoinRoom.click(); });
 
 // ===========================================================================
-// SALAS: ENTRAR, SAIR E VOLTAR
+// SALAS COM VÁRIAS PESSOAS
 //
-// Não existe mais "host fixo". Quem chega primeiro assume o ID da sala
-// (vira anfitrião); quem chega depois conecta nele. Se o anfitrião sai, quem
-// ficou assume a sala sozinho e espera a próxima pessoa. Assim qualquer um
-// pode sair e voltar, e a sala funciona em outro dia sem recriar nada.
+// Não existe anfitrião. Cada pessoa ocupa uma "vaga" (um ID fixo por sala:
+// ...-s0, ...-s1, ...). Quem entra pega a primeira vaga livre e liga para todas
+// as outras vagas; quem responde é quem já está na sala. Cada par de pessoas
+// tem a sua própria conexão (dados, voz, câmera e tela), então ninguém precisa
+// "assumir" a sala: qualquer um pode sair e voltar a qualquer momento.
 // ===========================================================================
-function getHostPeerId() {
-  return `${PEER_PREFIX}${currentRoomName}-host`;
+function slotPeerId(k) {
+  return `${PEER_PREFIX}${currentRoomName}-s${k}`;
+}
+
+function roomCapacity() {
+  return currentRoomExclusive ? 2 : MAX_ROOM_SIZE;
 }
 
 function createPeer(id) {
-  return new Peer(id, {
-    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-  });
+  return new Peer(id, { config: { iceServers: ICE_SERVERS } });
 }
 
 function isCurrentPeer(p, session) {
@@ -657,16 +667,728 @@ function destroyPeer() {
   }
 }
 
-function closeRemoteConnections() {
-  const dc = dataConn, mc = mainCall, sc = screenCall, isc = incomingScreenCall, cc = camCall, icc = incomingCamCall;
-  dataConn = null; mainCall = null; screenCall = null; incomingScreenCall = null; camCall = null; incomingCamCall = null;
-  targetPeerId = null;
-  remoteVerified = false;
-  [mc, sc, isc, cc, icc].forEach(safeClose);
-  safeClose(dc);
+function verifiedPeers() {
+  return Array.from(peers.values()).filter(e => e.verified);
 }
 
-// Uma senha é "confiável" quando já foi confirmada antes (sala sua ou já visitada)
+function makePeerEntry(id, conn, initiatedByMe) {
+  return {
+    id,
+    conn,
+    initiatedByMe,
+    verified: false,
+    probing: false,
+    probeTimer: null,
+    lastSeen: Date.now(),
+    profile: { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' },
+    voiceCall: null,
+    screenOut: null,   // minha tela enviada para essa pessoa
+    camOut: null,      // minha câmera enviada para essa pessoa
+    screenIn: null,    // tela que essa pessoa transmite
+    screenStream: null,
+    screenStartedAt: 0,
+    camIn: null,       // câmera dessa pessoa
+    camStream: null,
+    audioEl: null,
+    card: null
+  };
+}
+
+function sendTo(entry, data) {
+  if (entry && entry.conn && entry.conn.open) {
+    try { entry.conn.send(data); } catch (e) {}
+  }
+}
+
+function broadcast(data) {
+  verifiedPeers().forEach(e => sendTo(e, data));
+}
+
+function sanitizeProfile(p) {
+  p = p || {};
+  const name = typeof p.name === 'string' ? p.name.slice(0, 40).trim() : '';
+  const avatar = (typeof p.avatar === 'string' && p.avatar.startsWith('data:image/')) ? p.avatar : defaultAvatar;
+  const status = typeof p.status === 'string' ? p.status.slice(0, 40) : 'Conectado';
+  return { name: name || 'Convidado', avatar, status };
+}
+
+// ---------------------------------------------------------------------------
+// ENTRAR NA REDE DA SALA: pegar uma vaga e procurar quem já está lá
+// ---------------------------------------------------------------------------
+function connectToRoom(session) {
+  if (session !== roomSession || !inRoom) return;
+  clearTimeout(reconnectTimer);
+  destroyPeer();
+  clearAllPeers();
+  setStatus('Conectando...');
+  claimSlot(session, 0);
+}
+
+function claimSlot(session, k) {
+  if (session !== roomSession || !inRoom) return;
+
+  if (k >= SLOT_COUNT) {
+    if (!roomEntered) failJoin('A sala está cheia no momento. Tente de novo em instantes.');
+    else scheduleReconnect(session, 4000);
+    return;
+  }
+
+  const id = slotPeerId(k);
+  const p = createPeer(id);
+  peer = p;
+  let opened = false;
+
+  p.on('open', () => {
+    if (!isCurrentPeer(p, session)) return;
+    opened = true;
+    mySlot = k;
+    myPeerId = id;
+    p.on('connection', conn => handleIncomingConnection(conn, session));
+    p.on('call', call => handleIncomingCall(call));
+    probeRoom(session, p);
+  });
+
+  p.on('error', err => {
+    if (!isCurrentPeer(p, session)) return;
+    if (!opened && err.type === 'unavailable-id') {
+      destroyPeer();
+      claimSlot(session, k + 1); // vaga ocupada: tenta a próxima
+      return;
+    }
+    handlePeerError(err, session);
+  });
+
+  p.on('disconnected', () => handlePeerDisconnected(p, session));
+  p.on('close', () => {
+    if (isCurrentPeer(p, session)) scheduleReconnect(session, 1500);
+  });
+}
+
+// Liga para todas as outras vagas; só as que estão ocupadas respondem
+function probeRoom(session, p) {
+  probesPending = 0;
+  for (let j = 0; j < SLOT_COUNT; j++) {
+    if (j === mySlot) continue;
+    const id = slotPeerId(j);
+    const conn = p.connect(id, { reliable: true });
+    const entry = makePeerEntry(id, conn, true);
+    entry.probing = true;
+    probesPending++;
+    peers.set(id, entry);
+    attachConn(entry, conn, session);
+    entry.probeTimer = setTimeout(() => finishProbe(session, id), PEER_PROBE_TIMEOUT_MS);
+  }
+}
+
+// Uma vaga respondeu "ninguém aqui" (ou não respondeu a tempo)
+function finishProbe(session, id) {
+  if (session !== roomSession || !inRoom) return;
+  const entry = peers.get(id);
+  if (!entry || !entry.probing) return;
+  if (entry.conn && entry.conn.open) return; // respondeu: o resto é com a confirmação da senha
+  removePeerEntry(id, { silent: true }); // também chama maybeResolveJoin
+}
+
+// Quando todas as vagas foram testadas e ninguém confirmou a senha: a sala está vazia
+function maybeResolveJoin(session) {
+  if (session !== roomSession || !inRoom || roomEntered) return;
+  if (probesPending > 0) return;
+  const waiting = Array.from(peers.values()).some(e => e.initiatedByMe && !e.verified);
+  if (waiting) return;
+  if (joinTrusted) enterRoomUI(session);
+  else failJoin('Ninguém está nessa sala agora, então não dá para conferir a senha. Peça para o dono entrar primeiro ou crie a sala em "Criar sala".');
+}
+
+function scheduleReconnect(session, delay = 3000) {
+  if (session !== roomSession || !inRoom) return;
+  clearTimeout(reconnectTimer);
+  destroyPeer();
+  clearAllPeers();
+  setStatus('Reconectando...');
+  reconnectTimer = setTimeout(() => connectToRoom(session), delay);
+}
+
+function handlePeerError(err, session) {
+  if (err.type === 'peer-unavailable') {
+    // "Could not connect to peer <id>": a vaga está vazia
+    const m = /peer\s+(\S+)/.exec(err.message || '');
+    if (m) {
+      const e = peers.get(m[1]);
+      if (e && e.probing) removePeerEntry(m[1], { silent: true });
+    }
+    return;
+  }
+  console.warn('Erro do PeerJS:', err.type, err);
+  const signalingErrors = ['network', 'server-error', 'socket-error', 'socket-closed'];
+  if (!signalingErrors.includes(err.type)) return;
+  // Se já há gente conectada, as chamadas seguem funcionando sem o servidor
+  if (verifiedPeers().length > 0) return;
+  scheduleReconnect(session, 3000);
+}
+
+function handlePeerDisconnected(p, session) {
+  if (!isCurrentPeer(p, session)) return;
+  // Perdeu o servidor de sinalização (não as chamadas): tenta religar mantendo o ID
+  setTimeout(() => {
+    if (isCurrentPeer(p, session) && p.disconnected && !p.destroyed) {
+      try { p.reconnect(); } catch (e) {}
+    }
+  }, 1500);
+}
+
+// ---------------------------------------------------------------------------
+// CONEXÃO DE DADOS COM CADA PESSOA (senha, perfil, chat, batimento)
+// ---------------------------------------------------------------------------
+function handleIncomingConnection(conn, session) {
+  if (session !== roomSession || !inRoom) { safeClose(conn); return; }
+  const id = conn.peer;
+  const existing = peers.get(id);
+
+  if (existing) {
+    if (existing.verified) {
+      // a pessoa voltou antes de eu perceber que ela tinha caído
+      removePeerEntry(id, { silent: true, noResolve: true });
+    } else if (existing.initiatedByMe) {
+      // as duas pessoas ligaram uma para a outra ao mesmo tempo: vale a conexão iniciada pelo menor ID
+      if (id < myPeerId) removePeerEntry(id, { silent: true, noResolve: true });
+      else { safeClose(conn); return; }
+    } else {
+      removePeerEntry(id, { silent: true, noResolve: true });
+    }
+  }
+
+  const entry = makePeerEntry(id, conn, false);
+  peers.set(id, entry);
+  attachConn(entry, conn, session);
+}
+
+function attachConn(entry, conn, session) {
+  const onOpen = () => {
+    if (entry.conn !== conn) return;
+    entry.lastSeen = Date.now();
+    if (entry.probing) {
+      entry.probing = false;
+      clearTimeout(entry.probeTimer);
+      probesPending = Math.max(0, probesPending - 1);
+    }
+    if (entry.initiatedByMe) {
+      sendTo(entry, { type: 'HELLO', pin: currentRoomPin, profile: myProfile });
+    }
+  };
+
+  if (conn.open) onOpen(); else conn.on('open', onOpen);
+
+  conn.on('data', data => {
+    if (entry.conn !== conn) return;
+    entry.lastSeen = Date.now();
+    handlePeerMessage(entry, data, session);
+  });
+
+  const onGone = () => {
+    if (entry.conn === conn && peers.get(entry.id) === entry) removePeerEntry(entry.id);
+  };
+  conn.on('close', onGone);
+  conn.on('error', err => { console.warn('Erro na conexão de dados:', err); onGone(); });
+}
+
+function handlePeerMessage(entry, data, session) {
+  if (!data || typeof data !== 'object') return;
+
+  switch (data.type) {
+    case 'PING':
+      break;
+
+    case 'BYE':
+      removePeerEntry(entry.id);
+      break;
+
+    case 'HELLO': // quem recebeu a ligação confere a senha
+      if (!entry.initiatedByMe && !entry.verified) onHello(entry, data, session);
+      break;
+
+    case 'PIN_OK': // quem ligou recebe a confirmação
+      if (entry.initiatedByMe && !entry.verified) onPinOk(entry, data, session);
+      break;
+
+    case 'PIN_REJECTED':
+      if (!entry.initiatedByMe || roomEntered) { removePeerEntry(entry.id, { silent: true }); break; }
+      // senha errada: volta para o formulário e mostra o erro lá
+      if (joinOrigin === 'list') failJoin('A senha dessa sala mudou ou está incorreta. Digite a senha atual.');
+      else if (joinOrigin === 'create') failJoin('Já existe uma sala ativa com esse nome e outra senha. Escolha outro nome.');
+      else failJoin('❌ Senha incorreta. Confira com quem criou a sala.');
+      break;
+
+    case 'ROOM_FULL':
+      if (!entry.initiatedByMe) break;
+      if (!roomEntered) {
+        joinSawFull = true;
+        showToast('A sala está ocupada. Tentando de novo...');
+        scheduleReconnect(session, 4000);
+      } else {
+        removePeerEntry(entry.id, { silent: true });
+      }
+      break;
+
+    case 'NOT_READY': // a outra pessoa também está chegando agora e ainda não sabe a senha
+      removePeerEntry(entry.id, { silent: true });
+      break;
+
+    case 'PROFILE_UPDATE':
+      if (!entry.verified) break;
+      entry.profile = sanitizeProfile(data.profile);
+      updatePeerCard(entry);
+      updateRoomStatus();
+      refreshMainView();
+      break;
+
+    case 'CHAT_MSG':
+      if (!entry.verified) break;
+      appendChatMessage(String(data.author || entry.profile.name).slice(0, 40), String(data.text || '').slice(0, 2000), true);
+      break;
+
+    case 'ROULETTE': // sorteio feito por outra pessoa
+      if (!entry.verified || !currentRoomExclusive) break;
+      if (Array.isArray(data.options) && typeof data.pick === 'string') {
+        rouletteInput.value = data.options.slice(0, 50).map(o => String(o).slice(0, 80)).join('\n');
+        showRouletteResult(data.pick.slice(0, 80));
+        rouletteModal.classList.add('active');
+      }
+      break;
+  }
+}
+
+function onHello(entry, data, session) {
+  const drop = () => { if (peers.get(entry.id) === entry) removePeerEntry(entry.id, { silent: true }); };
+  const reject = (type) => { sendTo(entry, { type }); setTimeout(drop, 300); };
+
+  if (String(data.pin).trim() !== currentRoomPin) return reject('PIN_REJECTED');
+
+  if (!roomEntered) {
+    if (!joinTrusted) return reject('NOT_READY');
+    enterRoomUI(session); // senha já conhecida: entro e já recebo a pessoa
+  }
+
+  if (verifiedPeers().length + 1 >= roomCapacity()) return reject('ROOM_FULL');
+
+  entry.profile = sanitizeProfile(data.profile);
+  markVerified(entry, { announce: true });
+  sendTo(entry, { type: 'PIN_OK', exclusive: currentRoomExclusive, profile: myProfile });
+  if (screenStream) sendScreenCall(entry); // quem entrou depois já recebe a transmissão
+  if (camStream) sendCamCall(entry);
+}
+
+function onPinOk(entry, data, session) {
+  if (!roomEntered) currentRoomExclusive = !!data.exclusive; // quem já estava na sala diz se ela é exclusiva
+  entry.profile = sanitizeProfile(data.profile);
+
+  (async () => {
+    await enterRoomUI(session); // primeira confirmação: entra de verdade
+    if (session !== roomSession || peers.get(entry.id) !== entry) return;
+    markVerified(entry, { announce: false });
+    startVoiceCall(entry);
+    if (screenStream) sendScreenCall(entry);
+    if (camStream) sendCamCall(entry);
+  })();
+}
+
+function markVerified(entry, { announce }) {
+  entry.verified = true;
+  entry.lastSeen = Date.now();
+  addPeerCard(entry);
+  updateRoomStatus();
+  if (announce) playAlertSound('join'); // só quem já estava na sala ouve
+}
+
+// Tira uma pessoa da lista (saiu, caiu ou a vaga estava vazia)
+function removePeerEntry(id, { silent = false, noResolve = false } = {}) {
+  const entry = peers.get(id);
+  if (!entry) return;
+  peers.delete(id);
+
+  clearTimeout(entry.probeTimer);
+  if (entry.probing) {
+    entry.probing = false;
+    probesPending = Math.max(0, probesPending - 1);
+  }
+
+  const wasVerified = entry.verified;
+  entry.verified = false;
+  [entry.voiceCall, entry.screenOut, entry.camOut, entry.screenIn, entry.camIn].forEach(safeClose);
+  safeClose(entry.conn);
+  removePeerCard(entry);
+  entry.screenStream = null;
+  entry.camStream = null;
+
+  if (wasVerified) {
+    if (!silent) {
+      showToast(`${entry.profile.name} saiu da sala.`);
+      playAlertSound('leave');
+    }
+    refreshMainView();
+    updateRoomStatus();
+    applyScreenBitrates();
+  }
+  if (!noResolve) maybeResolveJoin(roomSession);
+}
+
+function clearAllPeers() {
+  Array.from(peers.keys()).forEach(id => removePeerEntry(id, { silent: true, noResolve: true }));
+}
+
+// Batimento: detecta quem caiu sem avisar (queda de internet, app fechado)
+function heartbeatTick() {
+  if (!inRoom) return;
+  const now = Date.now();
+  Array.from(peers.values()).forEach(e => {
+    if (!e.conn || !e.conn.open) return;
+    try { e.conn.send({ type: 'PING' }); } catch (err) {}
+    if (now - e.lastSeen > HEARTBEAT_TIMEOUT_MS) {
+      removePeerEntry(e.id, { silent: !e.verified });
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// VOZ, CÂMERA E TELA DE CADA PESSOA
+// ---------------------------------------------------------------------------
+function startVoiceCall(entry) {
+  if (!peer) return;
+  if (entry.voiceCall) safeClose(entry.voiceCall);
+  const call = peer.call(entry.id, getMainCallStream(), { metadata: { type: 'main' } });
+  entry.voiceCall = call;
+  attachVoiceCall(entry, call);
+}
+
+function ensureAudioEl(entry) {
+  if (!entry.audioEl) {
+    const a = document.createElement('audio');
+    a.autoplay = true;
+    a.volume = masterVoiceVolume;
+    document.body.appendChild(a);
+    entry.audioEl = a;
+    applySpeakerToElement(a);
+  }
+  return entry.audioEl;
+}
+
+function attachVoiceCall(entry, call) {
+  call.on('stream', stream => {
+    const a = ensureAudioEl(entry);
+    a.srcObject = stream;
+    tryPlay(a);
+  });
+  call.on('close', () => {
+    if (entry.voiceCall === call) {
+      entry.voiceCall = null;
+      if (entry.audioEl) entry.audioEl.srcObject = null;
+    }
+  });
+  call.on('error', e => console.warn('Erro na chamada de voz:', e));
+}
+
+function handleIncomingCall(call) {
+  const entry = peers.get(call.peer);
+  const type = call.metadata && call.metadata.type;
+
+  // Só atende quem já provou a senha, ou quem eu mesmo liguei e está confirmando
+  const trusted = !!entry && (entry.verified || entry.initiatedByMe);
+  if (!trusted) { safeClose(call); return; }
+
+  if (type === 'screen') {
+    if (entry.screenIn) safeClose(entry.screenIn);
+    entry.screenIn = call;
+    call.answer();
+    let announced = false; // o PeerJS pode avisar mais de uma vez; o som toca uma só
+    call.on('stream', stream => {
+      entry.screenStream = stream;
+      if (!announced) {
+        announced = true;
+        entry.screenStartedAt = Date.now();
+        activeScreenId = entry.id; // a transmissão mais recente passa a ser a exibida
+        playAlertSound('screen');
+      }
+      refreshMainView();
+    });
+    call.on('close', () => {
+      if (entry.screenIn === call) {
+        entry.screenIn = null;
+        entry.screenStream = null;
+        refreshMainView();
+      }
+    });
+  } else if (type === 'cam') {
+    if (entry.camIn) safeClose(entry.camIn);
+    entry.camIn = call;
+    call.answer();
+    call.on('stream', stream => { entry.camStream = stream; showPeerCam(entry); });
+    call.on('close', () => {
+      if (entry.camIn === call) {
+        entry.camIn = null;
+        entry.camStream = null;
+        showPeerCam(entry);
+      }
+    });
+  } else {
+    if (entry.voiceCall) safeClose(entry.voiceCall);
+    entry.voiceCall = call;
+    call.answer(getMainCallStream());
+    attachVoiceCall(entry, call);
+  }
+}
+
+function sendScreenCall(entry) {
+  if (!screenStream || !peer || !entry.verified) return;
+  if (entry.screenOut) safeClose(entry.screenOut);
+  entry.screenOut = peer.call(entry.id, screenStream, { metadata: { type: 'screen' } });
+  scheduleScreenBitrateUpdate();
+}
+
+function sendScreenToAll() {
+  verifiedPeers().forEach(sendScreenCall);
+}
+
+function sendCamCall(entry) {
+  if (!camStream || !peer || !entry.verified) return;
+  if (entry.camOut) safeClose(entry.camOut);
+  entry.camOut = peer.call(entry.id, camStream, { metadata: { type: 'cam' } });
+}
+
+function sendCamToAll() {
+  verifiedPeers().forEach(sendCamCall);
+}
+
+// Divide o limite de upload entre os espectadores da sua tela
+function applyScreenBitrates() {
+  if (!screenStream) return;
+  const outs = verifiedPeers().filter(e => e.screenOut);
+  if (outs.length === 0) return;
+  const budget = SCREEN_UPLOAD_BUDGET_KBPS[screenQuality] || 8000;
+  const perViewer = Math.max(600, Math.min(8000, Math.floor(budget / outs.length))) * 1000;
+
+  outs.forEach(e => {
+    const pc = e.screenOut.peerConnection;
+    if (!pc) return;
+    pc.getSenders().filter(s => s.track && s.track.kind === 'video').forEach(sender => {
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+        params.encodings[0].maxBitrate = perViewer;
+        sender.setParameters(params).catch(() => {});
+      } catch (err) {}
+    });
+  });
+}
+
+function scheduleScreenBitrateUpdate() {
+  setTimeout(applyScreenBitrates, 1500);
+  setTimeout(applyScreenBitrates, 5000);
+}
+
+// ---------------------------------------------------------------------------
+// TELA: um cartão por pessoa, status e qual transmissão está sendo exibida
+// ---------------------------------------------------------------------------
+function addPeerCard(entry) {
+  if (entry.card) return;
+  const root = document.createElement('div');
+  root.className = 'cam-box streamer-card';
+  root.innerHTML = `
+    <div class="avatar-placeholder">
+      <div class="avatar-circle"><img alt=""></div>
+      <span class="avatar-name"></span>
+      <span class="avatar-status"></span>
+    </div>
+    <video autoplay playsinline class="hidden"></video>
+    <span class="cam-label"><span class="name-tag"></span></span>
+  `;
+  camsContainer.appendChild(root);
+  entry.card = {
+    root,
+    avatarBox: root.querySelector('.avatar-placeholder'),
+    img: root.querySelector('img'),
+    name: root.querySelector('.avatar-name'),
+    status: root.querySelector('.avatar-status'),
+    tag: root.querySelector('.name-tag'),
+    video: root.querySelector('video')
+  };
+  ensureAudioEl(entry);
+  updatePeerCard(entry);
+  showPeerCam(entry);
+}
+
+function updatePeerCard(entry) {
+  if (!entry.card) return;
+  entry.card.img.src = entry.profile.avatar || defaultAvatar;
+  entry.card.name.textContent = entry.profile.name;
+  entry.card.status.textContent = entry.profile.status || '';
+  entry.card.tag.textContent = entry.profile.name;
+}
+
+function showPeerCam(entry) {
+  if (!entry.card) return;
+  const on = !!entry.camStream;
+  entry.card.video.srcObject = on ? entry.camStream : null;
+  entry.card.video.classList.toggle('hidden', !on);
+  entry.card.avatarBox.classList.toggle('hidden', on);
+}
+
+function removePeerCard(entry) {
+  if (entry.card) {
+    try { entry.card.video.srcObject = null; } catch (e) {}
+    entry.card.root.remove();
+    entry.card = null;
+  }
+  if (entry.audioEl) {
+    try { entry.audioEl.pause(); entry.audioEl.srcObject = null; entry.audioEl.remove(); } catch (e) {}
+    entry.audioEl = null;
+  }
+  layoutCards();
+}
+
+// Cartões menores quando há mais gente na sala
+function layoutCards() {
+  const visible = camsContainer.querySelectorAll('.cam-box:not(.hidden)').length;
+  let w = 520, h = 320;
+  if (visible >= 7) { w = 280; h = 175; }
+  else if (visible >= 5) { w = 340; h = 212; }
+  else if (visible >= 3) { w = 420; h = 262; }
+  camsContainer.style.setProperty('--cam-w', `${w}px`);
+  camsContainer.style.setProperty('--cam-h', `${h}px`);
+  camsContainer.dataset.dense = visible >= 3 ? '1' : '0';
+}
+
+function updateRoomStatus() {
+  const others = verifiedPeers();
+  waitingCard.classList.toggle('hidden', others.length > 0);
+
+  if (others.length === 0) {
+    setStatus('Aguardando...');
+    stopCallTimer();
+  } else {
+    setStatus(`🟢 ${others.length + 1} na sala`, true);
+    startCallTimer();
+  }
+  statusBadge.title = ['Você'].concat(others.map(e => e.profile.name)).join(', ');
+  layoutCards();
+}
+
+// Decide o que aparece no palco: a sua própria tela, a transmissão de alguém ou as câmeras
+function refreshMainView() {
+  const incoming = Array.from(peers.values())
+    .filter(e => e.screenStream)
+    .sort((a, b) => a.screenStartedAt - b.screenStartedAt);
+
+  if (!incoming.some(e => e.id === activeScreenId)) {
+    activeScreenId = incoming.length ? incoming[incoming.length - 1].id : null;
+  }
+
+  let showing = null;
+  if (screenStream) {
+    mainStream.srcObject = screenStream;   // prévia da sua própria transmissão
+    mainStream.muted = true;
+    remoteScreenAudio.srcObject = null;
+    showing = 'mine';
+  } else if (activeScreenId) {
+    const e = peers.get(activeScreenId);
+    mainStream.srcObject = e.screenStream;
+    mainStream.muted = true;               // o som sai pelo elemento de áudio abaixo (volume próprio)
+    remoteScreenAudio.srcObject = e.screenStream;
+    tryPlay(remoteScreenAudio);
+    showing = 'remote';
+  }
+
+  if (showing) {
+    mainStream.classList.remove('hidden');
+    camsContainer.classList.add('hidden');
+  } else {
+    mainStream.srcObject = null;
+    mainStream.classList.add('hidden');
+    camsContainer.classList.remove('hidden');
+    remoteScreenAudio.srcObject = null;
+  }
+  containerScreenVolume.classList.toggle('hidden', showing !== 'remote');
+  renderScreenSwitcher(incoming);
+}
+
+// Com mais de uma transmissão ao mesmo tempo, aparecem botões para escolher qual assistir
+function renderScreenSwitcher(incoming) {
+  const show = !screenStream && incoming.length > 1;
+  screenSwitcher.classList.toggle('hidden', !show);
+  if (!show) { screenSwitcher.innerHTML = ''; return; }
+  screenSwitcher.innerHTML = incoming.map(e =>
+    `<button class="switch-btn${e.id === activeScreenId ? ' active' : ''}" data-peer="${escapeHtml(e.id)}">🖥️ ${escapeHtml(e.profile.name)}</button>`
+  ).join('');
+}
+
+screenSwitcher.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-peer]');
+  if (!btn) return;
+  activeScreenId = btn.dataset.peer;
+  refreshMainView();
+});
+
+// ---------------------------------------------------------------------------
+// SAIR DA SALA
+// ---------------------------------------------------------------------------
+function leaveRoom({ silent = false } = {}) {
+  if (inRoom && roomEntered) broadcast({ type: 'BYE' });
+
+  inRoom = false;
+  roomEntered = false;
+  roomSession++;
+  clearTimeout(reconnectTimer);
+  clearTimeout(joinTimeoutTimer);
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+  probesPending = 0;
+  setJoinBusy(false);
+
+  stopScreenShare();
+  stopCamera();
+
+  // Solta tudo; o fechamento real espera 200ms para o aviso (BYE) chegar
+  const oldPeer = peer; peer = null;
+  const old = Array.from(peers.values());
+  peers = new Map();
+  activeScreenId = null;
+  old.forEach(e => {
+    clearTimeout(e.probeTimer);
+    removePeerCard(e);
+    e.screenStream = null;
+    e.camStream = null;
+  });
+  setTimeout(() => {
+    old.forEach(e => {
+      [e.voiceCall, e.screenOut, e.camOut, e.screenIn, e.camIn].forEach(safeClose);
+      safeClose(e.conn);
+    });
+    try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
+  }, 200);
+
+  stopCallTimer();
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  isMicMuted = true;
+  applyMicButtonState();
+
+  chatDrawer.classList.remove('open');
+  chatMessagesList.innerHTML = '';
+  chatUnreadDot.classList.add('hidden');
+
+  audioUnlock.classList.add('hidden');
+  releaseWakeLock();
+
+  refreshMainView();
+  updateRoomStatus();
+  setStatus('Aguardando...');
+
+  if (!silent) updateAuthUI();
+}
+
+// ---------------------------------------------------------------------------
+// ENTRAR NA SALA: senha, erros no formulário e confirmação
+// ---------------------------------------------------------------------------
 function isPinTrusted(room, pin, origin) {
   if (origin === 'create') return true;
   const dbInfo = getRoomsDatabase()[room];
@@ -703,8 +1425,6 @@ function setJoinBusy(busy) {
   myRoomsList.classList.toggle('busy', busy);
 }
 
-// Pede para entrar. A tela do lobby só some depois que a senha for confirmada;
-// se estiver errada, o erro aparece no próprio formulário.
 function joinRoom(roomName, pin, origin = 'join', exclusiveFlag = false) {
   if (joinBusy) return;
   leaveRoom({ silent: true });
@@ -720,6 +1440,7 @@ function joinRoom(roomName, pin, origin = 'join', exclusiveFlag = false) {
   joinTrusted = isPinTrusted(name, cleanPin, origin);
   currentRoomExclusive = origin === 'create' ? !!exclusiveFlag : lookupRoomExclusive(name);
   roomEntered = false;
+  joinSawFull = false;
   clearFormErrors();
 
   inRoom = true;
@@ -731,14 +1452,15 @@ function joinRoom(roomName, pin, origin = 'join', exclusiveFlag = false) {
   heartbeatTimer = setInterval(heartbeatTick, HEARTBEAT_MS);
   joinTimeoutTimer = setTimeout(() => {
     if (session === roomSession && !roomEntered) {
-      failJoin('Não foi possível conectar à sala. Confira o nome e sua internet e tente de novo.');
+      failJoin(joinSawFull
+        ? 'A sala está cheia no momento. Tente de novo em instantes.'
+        : 'Não foi possível conectar à sala. Confira o nome e sua internet e tente de novo.');
     }
   }, JOIN_VERIFY_TIMEOUT_MS);
 
   connectToRoom(session);
 }
 
-// Senha confirmada: agora sim entra na sala (some o lobby, liga o microfone)
 async function enterRoomUI(session) {
   if (session !== roomSession || !inRoom) return;
 
@@ -759,441 +1481,18 @@ async function enterRoomUI(session) {
     isMicMuted = true;
     applyMicButtonState();
     applySpeakerToAudioElements();
+    updateRoomStatus();
+    requestWakeLock();
   }
 
   await startMicrophone();
 }
 
-// Não deu para entrar: volta para o formulário mostrando o motivo
 function failJoin(msg) {
   const origin = joinOrigin;
   const room = currentRoomName;
   leaveRoom({ silent: true });
   showJoinError(origin, room, msg);
-}
-
-function leaveRoom({ silent = false } = {}) {
-  if (inRoom && roomEntered) sendDataMessage({ type: 'BYE' });
-
-  inRoom = false;
-  roomEntered = false;
-  roomSession++;
-  clearTimeout(reconnectTimer);
-  clearTimeout(guestConnectTimer);
-  clearTimeout(joinTimeoutTimer);
-  clearInterval(heartbeatTimer);
-  heartbeatTimer = null;
-  setJoinBusy(false);
-
-  stopScreenShare();
-  stopCamera();
-
-  // Solta tudo; o fechamento real espera 200ms para o aviso (BYE) chegar
-  const oldPeer = peer; peer = null;
-  const dc = dataConn, mc = mainCall, sc = screenCall, isc = incomingScreenCall, icc = incomingCamCall;
-  dataConn = null; mainCall = null; screenCall = null; incomingScreenCall = null; incomingCamCall = null;
-  targetPeerId = null;
-  remoteVerified = false;
-  setTimeout(() => {
-    [mc, sc, isc, icc].forEach(safeClose);
-    safeClose(dc);
-    try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
-  }, 200);
-
-  stopCallTimer();
-  if (micStream) {
-    micStream.getTracks().forEach(t => t.stop());
-    micStream = null;
-  }
-  isMicMuted = true;
-  applyMicButtonState();
-
-  chatDrawer.classList.remove('open');
-  chatMessagesList.innerHTML = '';
-  chatUnreadDot.classList.add('hidden');
-
-  resetRemoteState();
-  setStatus('Aguardando...');
-
-  if (!silent) updateAuthUI();
-}
-
-function connectToRoom(session) {
-  if (session !== roomSession || !inRoom) return;
-  clearTimeout(reconnectTimer);
-  clearTimeout(guestConnectTimer);
-  destroyPeer();
-  closeRemoteConnections();
-  setStatus('Conectando...');
-  tryBecomeHost(session);
-}
-
-// Passo 1: tenta ser o anfitrião (ID da sala livre = a sala está vazia)
-function tryBecomeHost(session) {
-  const hostId = getHostPeerId();
-  const p = createPeer(hostId);
-  peer = p;
-
-  p.on('open', () => {
-    if (!isCurrentPeer(p, session)) return;
-    isHostInstance = true;
-    myPeerId = hostId;
-    setStatus('Aguardando...');
-
-    if (!roomEntered) {
-      if (joinTrusted) enterRoomUI(session);
-      else failJoin('Ninguém está nessa sala agora, então não dá para conferir a senha. Peça para o dono entrar primeiro ou crie a sala em "Criar sala".');
-    }
-  });
-
-  p.on('connection', conn => {
-    if (!isCurrentPeer(p, session)) { safeClose(conn); return; }
-
-    // Sala já ocupada por alguém conectado de verdade
-    if (dataConn && dataConn.open && Date.now() - lastSeen < HEARTBEAT_TIMEOUT_MS) {
-      const sendFull = () => {
-        try { conn.send({ type: 'ROOM_FULL' }); } catch (e) {}
-        setTimeout(() => safeClose(conn), 300);
-      };
-      if (conn.open) sendFull(); else conn.on('open', sendFull);
-      return;
-    }
-
-    // Conexão anterior morta/fantasma: troca pela nova
-    if (dataConn) closeRemoteConnections();
-    setupDataConnection(conn, session);
-  });
-
-  p.on('call', call => handleIncomingCall(call));
-
-  p.on('error', err => {
-    if (!isCurrentPeer(p, session)) return;
-    if (err.type === 'unavailable-id') {
-      // Já tem anfitrião: então eu entro como convidado
-      destroyPeer();
-      becomeGuest(session);
-    } else {
-      handlePeerError(err, session);
-    }
-  });
-
-  p.on('disconnected', () => handlePeerDisconnected(p, session));
-}
-
-// Passo 2: já existe anfitrião, conecta nele
-function becomeGuest(session) {
-  if (session !== roomSession || !inRoom) return;
-  isHostInstance = false;
-
-  const hostId = getHostPeerId();
-  const guestId = `${PEER_PREFIX}${currentRoomName}-guest-${Math.random().toString(36).substring(2, 8)}`;
-  const p = createPeer(guestId);
-  peer = p;
-  myPeerId = guestId;
-
-  p.on('open', () => {
-    if (!isCurrentPeer(p, session)) return;
-    setStatus('Entrando na sala...');
-    const conn = p.connect(hostId, { reliable: true });
-    setupDataConnection(conn, session);
-
-    // Anfitrião fantasma (caiu sem avisar): desiste e tenta de novo
-    clearTimeout(guestConnectTimer);
-    guestConnectTimer = setTimeout(() => {
-      if (!isCurrentPeer(p, session) || remoteVerified) return;
-      scheduleReconnect(session, 500);
-    }, GUEST_CONNECT_TIMEOUT_MS);
-  });
-
-  p.on('call', call => handleIncomingCall(call));
-
-  p.on('error', err => {
-    if (!isCurrentPeer(p, session)) return;
-    if (err.type === 'peer-unavailable') {
-      // Ninguém na sala (o anfitrião saiu): tenta assumir a sala
-      scheduleReconnect(session, 1500);
-    } else {
-      handlePeerError(err, session);
-    }
-  });
-
-  p.on('disconnected', () => handlePeerDisconnected(p, session));
-}
-
-function scheduleReconnect(session, delay = 3000) {
-  if (session !== roomSession || !inRoom) return;
-  clearTimeout(reconnectTimer);
-  clearTimeout(guestConnectTimer);
-  destroyPeer();
-  closeRemoteConnections();
-  setStatus('Reconectando...');
-  reconnectTimer = setTimeout(() => connectToRoom(session), delay);
-}
-
-function handlePeerError(err, session) {
-  console.warn('Erro do PeerJS:', err.type, err);
-  const signalingErrors = ['network', 'server-error', 'socket-error', 'socket-closed'];
-  if (!signalingErrors.includes(err.type)) return;
-  // Se a chamada P2P já está de pé, ela segue funcionando sem o servidor
-  if (dataConn && dataConn.open && remoteVerified) return;
-  scheduleReconnect(session, 3000);
-}
-
-function handlePeerDisconnected(p, session) {
-  if (!isCurrentPeer(p, session)) return;
-  // Perdeu o servidor de sinalização (não a chamada): tenta religar mantendo o ID
-  setTimeout(() => {
-    if (isCurrentPeer(p, session) && p.disconnected && !p.destroyed) {
-      try { p.reconnect(); } catch (e) {}
-    }
-  }, 1500);
-}
-
-// ---------------------------------------------------------------------------
-// CHAMADAS DE ÁUDIO / TELA RECEBIDAS
-// ---------------------------------------------------------------------------
-function handleIncomingCall(call) {
-  const type = call.metadata && call.metadata.type;
-
-  // Anfitrião só atende quem já provou o PIN; convidado só atende o anfitrião
-  const trusted = isHostInstance
-    ? (dataConn && remoteVerified && call.peer === dataConn.peer)
-    : (call.peer === getHostPeerId());
-  if (!trusted) { safeClose(call); return; }
-
-  if (type === 'screen') {
-    const prev = incomingScreenCall;
-    incomingScreenCall = call;
-    if (prev) safeClose(prev);
-
-    call.answer();
-    let announced = false; // o PeerJS pode avisar mais de uma vez; o som toca uma só
-    call.on('stream', stream => {
-      if (!announced) { announced = true; playAlertSound('screen'); }
-      mainStream.srcObject = stream;
-      remoteScreenAudio.srcObject = stream; // áudio só do app compartilhado
-      mainStream.classList.remove('hidden');
-      camsContainer.classList.add('hidden');
-      containerScreenVolume.classList.remove('hidden');
-    });
-    call.on('close', () => {
-      if (incomingScreenCall === call) {
-        incomingScreenCall = null;
-        resetRemoteScreenView();
-      }
-    });
-  } else if (type === 'cam') {
-    const prev = incomingCamCall;
-    incomingCamCall = call;
-    if (prev) safeClose(prev);
-
-    call.answer();
-    call.on('stream', stream => {
-      remoteCam.srcObject = stream;
-      remoteCam.classList.remove('hidden');
-      avatarRemoteBox.classList.add('hidden');
-    });
-    call.on('close', () => {
-      if (incomingCamCall === call) {
-        incomingCamCall = null;
-        hideRemoteCam();
-      }
-    });
-  } else {
-    if (mainCall) safeClose(mainCall);
-    mainCall = call;
-    call.answer(getMainCallStream());
-    attachMainCallEvents(call);
-  }
-}
-
-function attachMainCallEvents(call) {
-  call.on('stream', stream => {
-    remoteVoiceAudio.srcObject = stream;
-  });
-  call.on('close', () => {
-    if (mainCall === call) {
-      mainCall = null;
-      remoteVoiceAudio.srcObject = null;
-    }
-  });
-  call.on('error', e => console.warn('Erro na chamada de voz:', e));
-}
-
-// Quem ASSISTE: volta para as câmeras quando a transmissão acaba
-function resetRemoteScreenView() {
-  remoteScreenAudio.srcObject = null;
-  if (!screenStream) {
-    mainStream.srcObject = null;
-    mainStream.classList.add('hidden');
-    camsContainer.classList.remove('hidden');
-    containerScreenVolume.classList.add('hidden');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// CONEXÃO DE DADOS (PIN, perfil, chat, batimento)
-// ---------------------------------------------------------------------------
-function setupDataConnection(conn, session) {
-  dataConn = conn;
-  targetPeerId = conn.peer;
-  remoteVerified = false;
-  lastSeen = Date.now();
-
-  const onOpen = () => {
-    if (dataConn !== conn) return;
-    lastSeen = Date.now();
-    if (!isHostInstance) sendDataMessage({ type: 'HANDSHAKE_PIN', pin: currentRoomPin });
-  };
-
-  if (conn.open) onOpen(); else conn.on('open', onOpen);
-
-  conn.on('data', data => {
-    if (dataConn !== conn) return;
-    lastSeen = Date.now();
-    handleDataMessage(data, session);
-  });
-
-  conn.on('close', () => { if (dataConn === conn) handleRemoteLeft(session); });
-  conn.on('error', err => {
-    console.warn('Erro na conexão de dados:', err);
-    if (dataConn === conn) handleRemoteLeft(session);
-  });
-}
-
-function sanitizeProfile(p) {
-  p = p || {};
-  const name = typeof p.name === 'string' ? p.name.slice(0, 40).trim() : '';
-  const avatar = (typeof p.avatar === 'string' && p.avatar.startsWith('data:image/')) ? p.avatar : defaultAvatar;
-  const status = typeof p.status === 'string' ? p.status.slice(0, 40) : 'Conectado';
-  return { name: name || 'Convidado', avatar, status };
-}
-
-function handleDataMessage(data, session) {
-  if (!data || typeof data !== 'object') return;
-
-  switch (data.type) {
-    case 'PING':
-      break;
-
-    case 'BYE':
-      handleRemoteLeft(session);
-      break;
-
-    case 'HANDSHAKE_PIN': // chega no anfitrião
-      if (!isHostInstance) break;
-      if (String(data.pin).trim() !== currentRoomPin) {
-        sendDataMessage({ type: 'PIN_REJECTED' });
-        const c = dataConn;
-        setTimeout(() => safeClose(c), 300);
-      } else {
-        remoteVerified = true;
-        remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
-        sendDataMessage({ type: 'PIN_OK', exclusive: currentRoomExclusive });
-        sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
-        onRemoteJoined();
-        playAlertSound('join'); // alguém entrou na sala
-        if (screenStream) sendScreenCall(); // quem entrou depois já recebe a transmissão
-        if (camStream) sendCamCall();
-      }
-      break;
-
-    case 'PIN_OK': // chega no convidado: só agora ele entra de verdade na sala
-      if (isHostInstance || !peer) break;
-      remoteVerified = true;
-      currentRoomExclusive = !!data.exclusive; // o anfitrião diz se a sala é exclusiva
-      remoteProfile = { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' };
-      clearTimeout(guestConnectTimer);
-      (async () => {
-        await enterRoomUI(session);
-        if (session !== roomSession || !peer || !dataConn || !remoteVerified) return;
-        sendDataMessage({ type: 'PROFILE_UPDATE', profile: myProfile });
-        onRemoteJoined();
-        mainCall = peer.call(getHostPeerId(), getMainCallStream(), { metadata: { type: 'main' } });
-        attachMainCallEvents(mainCall);
-        if (screenStream) sendScreenCall();
-        if (camStream) sendCamCall();
-      })();
-      break;
-
-    case 'PIN_REJECTED': // senha errada: volta para o formulário e mostra o erro lá
-      if (roomEntered) break;
-      if (joinOrigin === 'list') failJoin('A senha dessa sala mudou ou está incorreta. Digite a senha atual.');
-      else if (joinOrigin === 'create') failJoin('Já existe uma sala ativa com esse nome e outra senha. Escolha outro nome.');
-      else failJoin('❌ Senha incorreta. Confira com quem criou a sala.');
-      break;
-
-    case 'ROOM_FULL':
-      showToast('A sala está ocupada. Tentando de novo...');
-      scheduleReconnect(session, 4000);
-      break;
-
-    case 'ROULETTE': // sorteio feito pela outra pessoa
-      if (!remoteVerified || !currentRoomExclusive) break;
-      if (Array.isArray(data.options) && typeof data.pick === 'string') {
-        rouletteInput.value = data.options.slice(0, 50).map(o => String(o).slice(0, 80)).join('\n');
-        showRouletteResult(data.pick.slice(0, 80));
-        rouletteModal.classList.add('active');
-      }
-      break;
-
-    case 'PROFILE_UPDATE':
-      if (!remoteVerified) break;
-      remoteProfile = sanitizeProfile(data.profile);
-      updateProfileUI();
-      break;
-
-    case 'CHAT_MSG':
-      if (!remoteVerified) break;
-      appendChatMessage(String(data.author || 'Convidado').slice(0, 40), String(data.text || '').slice(0, 2000), true);
-      break;
-  }
-}
-
-function sendDataMessage(data) {
-  if (dataConn && dataConn.open) {
-    try { dataConn.send(data); } catch (e) {}
-  }
-}
-
-function onRemoteJoined() {
-  setStatus('🟢 Conectados', true);
-  startCallTimer();
-  updateProfileUI();
-}
-
-function handleRemoteLeft(session) {
-  if (session !== roomSession || !inRoom) return;
-  if (!dataConn && !mainCall) return;
-
-  const wasVerified = remoteVerified;
-  closeRemoteConnections();
-  resetRemoteState();
-  stopCallTimer();
-  if (wasVerified) showToast('A outra pessoa saiu da sala.');
-
-  if (isHostInstance) {
-    setStatus('Aguardando...');   // a sala continua aberta para quem voltar
-  } else {
-    scheduleReconnect(session, 1500); // o anfitrião saiu: eu assumo a sala
-  }
-}
-
-function resetRemoteState() {
-  remoteProfile = makeEmptyRemoteProfile();
-  remoteVoiceAudio.srcObject = null;
-  resetRemoteScreenView();
-  hideRemoteCam();
-  updateProfileUI();
-}
-
-// Batimento: detecta quem caiu sem avisar (queda de internet, app fechado)
-function heartbeatTick() {
-  if (!inRoom) return;
-  if (dataConn && dataConn.open) {
-    sendDataMessage({ type: 'PING' });
-    if (Date.now() - lastSeen > HEARTBEAT_TIMEOUT_MS) handleRemoteLeft(roomSession);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1229,25 +1528,16 @@ function updateProfileUI() {
   const tagLocal = document.getElementById('name-tag-local');
   const statusLocal = document.getElementById('avatar-status-local');
 
-  const avatarRemote = document.getElementById('avatar-img-remote');
-  const nameRemote = document.getElementById('avatar-name-remote');
-  const tagRemote = document.getElementById('name-tag-remote');
-  const statusRemote = document.getElementById('avatar-status-remote');
-
   if (avatarLocal) avatarLocal.src = myProfile.avatar || defaultAvatar;
   if (nameLocal) nameLocal.innerText = myProfile.name || 'Você';
   if (tagLocal) tagLocal.innerText = `${myProfile.name || 'Você'} (Você)`;
   if (statusLocal) statusLocal.innerText = myProfile.status || 'Disponível';
-
-  if (avatarRemote) avatarRemote.src = remoteProfile.avatar || defaultAvatar;
-  if (nameRemote) nameRemote.innerText = remoteProfile.name || 'Convidado';
-  if (tagRemote) tagRemote.innerText = remoteProfile.name || 'Convidado';
-  if (statusRemote) statusRemote.innerText = remoteProfile.status || '';
 }
 
 remoteMicVolumeSlider.addEventListener('input', (e) => {
   const val = parseFloat(e.target.value);
-  remoteVoiceAudio.volume = val;
+  masterVoiceVolume = val; // vale para a voz de todas as pessoas
+  peers.forEach(p => { if (p.audioEl) p.audioEl.volume = val; });
   micVolValueLabel.innerText = `${Math.round(val * 100)}%`;
 });
 
@@ -1257,10 +1547,31 @@ remoteScreenVolumeSlider.addEventListener('input', (e) => {
   screenVolValueLabel.innerText = `${Math.round(val * 100)}%`;
 });
 
+let silentTrack = null;
+function getSilentAudioTrack() {
+  if (!silentTrack) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    silentTrack = ctx.createMediaStreamDestination().stream.getAudioTracks()[0];
+  }
+  return silentTrack;
+}
+
+// Sem microfone (ou antes dele ligar) vai uma faixa muda, para a chamada ainda receber o som dos outros
 function getMainCallStream() {
-  const tracks = [];
-  if (micStream && micStream.getAudioTracks()[0]) tracks.push(micStream.getAudioTracks()[0]);
-  return new MediaStream(tracks);
+  const mic = micStream && micStream.getAudioTracks()[0];
+  return new MediaStream([mic || getSilentAudioTrack()]);
+}
+
+// Coloca o microfone atual em todas as chamadas de voz abertas
+function syncMicToCalls() {
+  const track = micStream && micStream.getAudioTracks()[0];
+  if (!track) return;
+  peers.forEach(e => {
+    const pc = e.voiceCall && e.voiceCall.peerConnection;
+    if (!pc) return;
+    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+    if (sender && sender.track !== track) sender.replaceTrack(track).catch(() => {});
+  });
 }
 
 async function openMicStream() {
@@ -1277,12 +1588,19 @@ async function openMicStream() {
   }
 }
 
-async function startMicrophone() {
-  if (micStream) return;
-  try {
-    micStream = await openMicStream();
-    micStream.getAudioTracks().forEach(t => t.enabled = !isMicMuted);
-  } catch (e) { console.warn('Sem mic:', e); }
+let micStartPromise = null;
+function startMicrophone() {
+  if (micStream) return Promise.resolve();
+  if (!micStartPromise) {
+    micStartPromise = (async () => {
+      try {
+        micStream = await openMicStream();
+        micStream.getAudioTracks().forEach(t => t.enabled = !isMicMuted);
+        syncMicToCalls();
+      } catch (e) { console.warn('Sem mic:', e); }
+    })().finally(() => { micStartPromise = null; });
+  }
+  return micStartPromise;
 }
 
 // Troca de microfone no meio da call, sem derrubar a chamada
@@ -1290,15 +1608,11 @@ async function switchMicrophone() {
   if (!micStream) return;
   try {
     const newStream = await openMicStream();
-    const newTrack = newStream.getAudioTracks()[0];
-    newTrack.enabled = !isMicMuted;
-
-    if (mainCall && mainCall.peerConnection) {
-      const sender = mainCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
-      if (sender) await sender.replaceTrack(newTrack);
-    }
-    micStream.getTracks().forEach(t => t.stop());
+    newStream.getAudioTracks().forEach(tr => { tr.enabled = !isMicMuted; });
+    const old = micStream;
     micStream = newStream;
+    syncMicToCalls();
+    old.getTracks().forEach(tr => tr.stop());
   } catch (e) {
     console.warn('Erro ao trocar de microfone:', e);
     showToast('Não foi possível trocar o microfone.');
@@ -1479,39 +1793,32 @@ function stopAppAudio() {
 // ===========================================================================
 // TRANSMISSÃO DE TELA
 // ===========================================================================
-function sendScreenCall() {
-  if (!screenStream || !peer || !remoteVerified || !targetPeerId) return;
-  if (screenCall) safeClose(screenCall);
-  screenCall = peer.call(targetPeerId, screenStream, { metadata: { type: 'screen' } });
-}
+
 
 function stopScreenShare() {
   stopAppAudio();
-
   if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop());
+    screenStream.getTracks().forEach(tr => tr.stop());
     screenStream = null;
   }
-  if (screenCall) {
-    safeClose(screenCall);
-    screenCall = null;
-  }
-
-  mainStream.srcObject = null;
-  mainStream.classList.add('hidden');
-  camsContainer.classList.remove('hidden');
-  containerScreenVolume.classList.add('hidden');
+  peers.forEach(e => {
+    if (e.screenOut) { safeClose(e.screenOut); e.screenOut = null; }
+  });
+  refreshMainView();
 }
 
 function beginScreenShare(stream) {
   screenStream = stream;
-  mainStream.srcObject = stream;
-  mainStream.muted = true; // você não precisa ouvir o eco da própria transmissão
-  mainStream.classList.remove('hidden');
-  camsContainer.classList.add('hidden');
+  const vt = stream.getVideoTracks()[0];
+  try { vt.contentHint = 'motion'; } catch (e) {} // prioriza fluidez (jogos/vídeos)
+  vt.onended = stopScreenShare;
 
-  stream.getVideoTracks()[0].onended = stopScreenShare;
-  sendScreenCall(); // se ainda não há ninguém na sala, vai quando a pessoa entrar
+  const viewers = verifiedPeers().length;
+  if (viewers > 2) {
+    showToast(`Transmitindo para ${viewers} pessoas: a qualidade é ajustada para caber na sua internet.`);
+  }
+  refreshMainView();
+  sendScreenToAll(); // quem entrar depois também recebe
 }
 
 async function startScreenShare() {
@@ -1519,8 +1826,13 @@ async function startScreenShare() {
     stopScreenShare();
     return;
   }
+  if (!CAN_SHARE_SCREEN) {
+    showToast('Este navegador não permite compartilhar a tela. Você pode assistir às transmissões dos outros.');
+    return;
+  }
 
   const qualityVal = document.getElementById('screen-quality-select').value;
+  screenQuality = qualityVal;
   const includeAudio = document.getElementById('screen-include-audio').checked;
 
   let width = 1280, height = 720, fps = 60;
@@ -1639,12 +1951,12 @@ function appendChatMessage(author, text, fromRemote = false) {
 btnSendChat.addEventListener('click', () => {
   const text = chatInput.value.trim();
   if (!text) return;
-  if (!remoteVerified) {
+  if (verifiedPeers().length === 0) {
     showToast('Ainda não há ninguém conectado na sala.');
     return;
   }
   appendChatMessage(myProfile.name || 'Você', text);
-  sendDataMessage({ type: 'CHAT_MSG', author: myProfile.name || 'Você', text: text });
+  broadcast({ type: 'CHAT_MSG', author: myProfile.name || 'Você', text: text });
   chatInput.value = '';
 });
 
@@ -1660,17 +1972,9 @@ function updateCamButton() {
   btnToggleCam.title = camStream ? 'Desligar câmera' : 'Ligar câmera';
 }
 
-function hideRemoteCam() {
-  remoteCam.srcObject = null;
-  remoteCam.classList.add('hidden');
-  avatarRemoteBox.classList.remove('hidden');
-}
 
-function sendCamCall() {
-  if (!camStream || !peer || !remoteVerified || !targetPeerId) return;
-  if (camCall) safeClose(camCall);
-  camCall = peer.call(targetPeerId, camStream, { metadata: { type: 'cam' } });
-}
+
+
 
 async function startCamera() {
   if (camStream || !roomEntered) return;
@@ -1700,19 +2004,18 @@ async function startCamera() {
   avatarLocalBox.classList.add('hidden');
   camStream.getVideoTracks()[0].onended = stopCamera;
   updateCamButton();
-  sendCamCall();
+  sendCamToAll();
   refreshDeviceLists();
 }
 
 function stopCamera() {
   if (camStream) {
-    camStream.getTracks().forEach(t => t.stop());
+    camStream.getTracks().forEach(tr => tr.stop());
     camStream = null;
   }
-  if (camCall) {
-    safeClose(camCall);
-    camCall = null;
-  }
+  peers.forEach(e => {
+    if (e.camOut) { safeClose(e.camOut); e.camOut = null; }
+  });
   localCam.srcObject = null;
   localCam.classList.add('hidden');
   avatarLocalBox.classList.remove('hidden');
@@ -1737,16 +2040,20 @@ function setPref(key, value) {
 }
 
 // Escolhe a saída de áudio (fone) das duas fontes de som da outra pessoa
-function applySpeakerToAudioElements() {
+function applySpeakerToElement(el) {
   if (!SINK_SUPPORTED) return;
   const id = getPref('app_speaker_id') || 'default';
-  [remoteVoiceAudio, remoteScreenAudio].forEach(el => {
-    el.setSinkId(id).catch(err => {
-      console.warn('Saída de áudio indisponível:', err);
-      setPref('app_speaker_id', '');
-      el.setSinkId('default').catch(() => {});
-    });
+  el.setSinkId(id).catch(err => {
+    console.warn('Saída de áudio indisponível:', err);
+    setPref('app_speaker_id', '');
+    el.setSinkId('default').catch(() => {});
   });
+}
+
+// Aplica o fone escolhido na voz de cada pessoa e no som da transmissão
+function applySpeakerToAudioElements() {
+  applySpeakerToElement(remoteScreenAudio);
+  peers.forEach(e => { if (e.audioEl) applySpeakerToElement(e.audioEl); });
 }
 
 function fillDeviceSelect(select, devices, unlabeledName, savedId) {
@@ -1892,7 +2199,7 @@ function spinRoulette() {
   if (options.length < 2) return showToast('Coloque pelo menos 2 opções (uma por linha).');
   const pick = options[Math.floor(Math.random() * options.length)];
   showRouletteResult(pick);
-  sendDataMessage({ type: 'ROULETTE', options, pick });
+  broadcast({ type: 'ROULETTE', options, pick });
 }
 
 document.getElementById('btn-spin-roulette').addEventListener('click', spinRoulette);
@@ -1915,7 +2222,7 @@ function migrateOldSetup() {
 }
 
 // ===========================================================================
-// AVISOS SONOROS (alguém entrou na sala / começou a compartilhar a tela)
+// AVISOS SONOROS (alguém entrou / saiu da sala / começou a compartilhar a tela)
 // Os sons são gerados aqui mesmo (sem arquivos) e saem no fone escolhido
 // ===========================================================================
 let alertCtx = null;
@@ -1934,10 +2241,13 @@ async function playAlertSound(kind) {
     }
     if (ctx.state === 'suspended') await ctx.resume();
 
-    // entrada: dois toques subindo | tela: três toques rápidos subindo
-    const isScreen = kind === 'screen';
-    const notes = isScreen ? [523.25, 659.25, 783.99] : [659.25, 880.0];
-    const step = isScreen ? 0.09 : 0.13;
+    // entrada: dois toques subindo | saída: dois toques descendo | tela: três toques rápidos subindo
+    const sounds = {
+      join: { notes: [659.25, 880.0], step: 0.13 },
+      leave: { notes: [783.99, 523.25], step: 0.14 },
+      screen: { notes: [523.25, 659.25, 783.99], step: 0.09 }
+    };
+    const { notes, step } = sounds[kind] || sounds.join;
     const t0 = ctx.currentTime + 0.02;
 
     notes.forEach((freq, i) => {
@@ -1960,10 +2270,9 @@ async function playAlertSound(kind) {
 }
 
 // ===========================================================================
-// TELA CHEIA E CONVITE
+// TELA CHEIA
 // ===========================================================================
 const btnFullscreen = document.getElementById('btn-fullscreen');
-const btnCopyLink = document.getElementById('btn-copy-link');
 
 btnFullscreen.addEventListener('click', async () => {
   try {
@@ -1981,31 +2290,90 @@ document.addEventListener('fullscreenchange', () => {
   btnFullscreen.title = on ? 'Sair da tela cheia' : 'Tela cheia';
 });
 
-// Copia um convite com o nome e a senha da sala (não existe link público: o app não tem servidor)
-function copyTextFallback(text) {
-  const area = document.createElement('textarea');
-  area.value = text;
-  area.style.position = 'fixed';
-  area.style.opacity = '0';
-  document.body.appendChild(area);
-  area.select();
-  let ok = false;
-  try { ok = document.execCommand('copy'); } catch (e) {}
-  area.remove();
-  return ok;
+// ===========================================================================
+// ATUALIZAÇÃO AUTOMÁTICA (só no app instalado)
+// ===========================================================================
+if (window.electronAPI && window.electronAPI.onUpdateStatus) {
+  window.electronAPI.onUpdateStatus((s) => {
+    if (s.state === 'available') {
+      updateBanner.classList.remove('hidden');
+      btnInstallUpdate.classList.add('hidden');
+      updateText.innerText = `Baixando a versão ${s.version}...`;
+    } else if (s.state === 'downloading') {
+      updateBanner.classList.remove('hidden');
+      updateText.innerText = `Baixando atualização... ${s.percent}%`;
+    } else if (s.state === 'ready') {
+      updateBanner.classList.remove('hidden');
+      updateText.innerText = `Versão ${s.version} pronta para instalar.`;
+      btnInstallUpdate.classList.remove('hidden');
+    }
+  });
+
+  btnInstallUpdate.addEventListener('click', () => {
+    if (inRoom && roomEntered && !confirm('Você está numa sala. Reiniciar agora tira você da chamada. Continuar?')) return;
+    window.electronAPI.installUpdate();
+  });
+
+  if (window.electronAPI.getAppVersion) {
+    window.electronAPI.getAppVersion().then(v => { appVersionEl.innerText = `v${v}`; }).catch(() => {});
+  }
 }
 
-btnCopyLink.addEventListener('click', async () => {
-  if (!inRoom || !roomEntered) return;
-  const invite = `Entra comigo no Space 777!\nSala: ${currentRoomName}\nSenha: ${currentRoomPin}`;
-  let ok = false;
+// ===========================================================================
+// NAVEGADOR E CELULAR (a mesma página funciona no PC e no celular)
+// ===========================================================================
+const IS_ELECTRON = !!(window.electronAPI && window.electronAPI.getSources);
+const CAN_SHARE_SCREEN = IS_ELECTRON || !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+const CAN_FULLSCREEN = !!document.documentElement.requestFullscreen;
+
+// Celulares normalmente só assistem: sem botão de compartilhar tela nem de tela cheia
+if (!CAN_SHARE_SCREEN) document.getElementById('btn-screen').classList.add('hidden');
+if (!CAN_FULLSCREEN) btnFullscreen.classList.add('hidden');
+
+const audioUnlock = document.getElementById('audio-unlock');
+const btnAudioUnlock = document.getElementById('btn-audio-unlock');
+
+// iPhone e alguns Androids bloqueiam som que começa sozinho: se acontecer, pede um toque
+function tryPlay(el) {
+  if (!el || !el.srcObject) return;
+  const p = el.play();
+  if (p && p.catch) p.catch(() => audioUnlock.classList.remove('hidden'));
+}
+
+btnAudioUnlock.addEventListener('click', () => {
+  peers.forEach(e => { if (e.audioEl) e.audioEl.play().catch(() => {}); });
+  remoteScreenAudio.play().catch(() => {});
+  if (alertCtx && alertCtx.state === 'suspended') alertCtx.resume();
+  audioUnlock.classList.add('hidden');
+});
+
+// No primeiro toque na página, libera também o som dos avisos
+document.addEventListener('pointerdown', () => {
   try {
-    await navigator.clipboard.writeText(invite);
-    ok = true;
-  } catch (e) {
-    ok = copyTextFallback(invite);
-  }
-  showToast(ok ? '📋 Convite copiado: nome e senha da sala!' : 'Não foi possível copiar o convite.');
+    if (!alertCtx) alertCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (alertCtx.state === 'suspended') alertCtx.resume();
+  } catch (e) {}
+}, { once: true });
+
+// Mantém a tela do celular acesa enquanto você está numa sala
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator) || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (e) {}
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && inRoom && roomEntered) requestWakeLock();
+});
+
+// No celular o "beforeunload" nem sempre dispara; "pagehide" avisa que você saiu
+window.addEventListener('pagehide', () => {
+  if (inRoom && roomEntered) broadcast({ type: 'BYE' });
 });
 
 // ---------------------------------------------------------------------------
@@ -2023,7 +2391,7 @@ document.getElementById('btn-hangup').addEventListener('click', () => leaveRoom(
 
 // Fechar a janela: avisa o outro lado e libera o ID da sala o quanto antes
 window.addEventListener('beforeunload', () => {
-  if (inRoom) sendDataMessage({ type: 'BYE' });
+  if (inRoom && roomEntered) broadcast({ type: 'BYE' });
   stopAppAudio();
   try { if (peer) peer.destroy(); } catch (e) {}
 });

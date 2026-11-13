@@ -95,7 +95,7 @@ body {
   background: #11131b; border: 1px solid #282a36; border-radius: 12px;
   padding: 10px 12px;
 }
-.room-card-row.vip { border-color: var(--accent-color); }
+.room-card-row.exclusive { border-color: #e0559b; background: linear-gradient(135deg, rgba(224,85,155,0.12), #11131b); }
 .room-card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .room-card-info strong {
   font-size: 13px; color: #fff;
@@ -192,24 +192,7 @@ body {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 0; border-bottom: 1px solid #282a36; font-size: 13px;
 }
-.admin-add-row { display: flex; gap: 8px; align-items: center; }
-.tag-vip {
-  font-size: 11px; padding: 2px 8px; border-radius: 10px;
-  background: #242a52; color: #aab2ff;
-}
 
-/* Interruptor de VIP */
-.sw {
-  width: 40px; height: 22px; border-radius: 11px; border: 0; padding: 0;
-  background: #3a3e55; position: relative; flex: none; cursor: pointer;
-}
-.sw::after {
-  content: ""; position: absolute; top: 3px; left: 3px;
-  width: 16px; height: 16px; border-radius: 50%; background: #fff;
-  transition: left 0.15s ease;
-}
-.sw.on { background: #2f8f55; }
-.sw.on::after { left: 21px; }
 
 .btn-primary {
   background: var(--accent-color); color: #fff; border: none;
@@ -285,10 +268,12 @@ header#main-header {
   display: flex !important; flex-direction: row !important;
   justify-content: center !important; align-items: center !important;
   gap: 24px !important; width: 100% !important; padding: 20px;
+  flex-wrap: wrap !important; align-content: center !important;
+  max-height: calc(100vh - 150px); overflow-y: auto;
 }
 
 .cam-box.streamer-card {
-  width: 520px !important; height: 320px !important;
+  width: var(--cam-w, 520px) !important; height: var(--cam-h, 320px) !important;
   background: linear-gradient(145deg, #12141d 0%, #0d0e15 100%);
   border-radius: 20px !important;
   border: 1px solid rgba(88, 101, 242, 0.4) !important;
@@ -482,3 +467,111 @@ footer#main-footer {
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .modal-divider { border: 0; border-top: 1px solid #282a36; margin: 16px 0 12px 0; }
 .modal-subtitle { font-size: 14px; color: #fff; margin-bottom: 10px; }
+
+.btn-ghost-sm {
+  background: transparent; color: #e3e5e8; border: 1px solid #3a3e55;
+  padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+}
+.btn-ghost-sm:hover { border-color: var(--accent-color); }
+.admin-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.check-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  font-size: 13px; color: #e3e5e8; cursor: pointer; margin: 6px 0 8px 0;
+}
+.check-row input { width: 16px; height: 16px; margin-top: 3px; accent-color: #e0559b; flex: none; }
+.check-row small { display: block; color: #9aa1b2; font-size: 12px; line-height: 1.4; margin-top: 2px; }
+
+/* ---------- VÁRIAS TRANSMISSÕES: botões para escolher qual assistir ---------- */
+.screen-switcher {
+  position: absolute; top: 62px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 9000; flex-wrap: wrap; justify-content: center;
+}
+.switch-btn {
+  background: rgba(24, 26, 36, 0.9); color: #e3e5e8; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px; padding: 6px 14px; font-size: 12px; cursor: pointer;
+}
+.switch-btn.active { background: var(--accent-color); border-color: var(--accent-color); color: #fff; font-weight: bold; }
+
+/* ---------- AVISO DE ATUALIZAÇÃO E VERSÃO (lobby) ---------- */
+.update-banner {
+  display: flex; flex-direction: column; gap: 8px;
+  background: rgba(88, 101, 242, 0.15); border: 1px solid var(--accent-color);
+  border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #e3e5e8;
+}
+.app-version { font-size: 11px; color: #9aa1b2; text-align: center; }
+
+/* ---------- AVISO "TOQUE PARA ATIVAR O SOM" (celular) ---------- */
+.audio-unlock {
+  position: fixed; top: 84px; left: 50%; transform: translateX(-50%);
+  z-index: 1000001;
+}
+.audio-unlock button { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6); padding: 12px 18px; }
+
+/* ---------- ALTURA CERTA NO CELULAR (barra do navegador) ---------- */
+@supports (height: 100dvh) {
+  body { height: 100dvh; }
+  #stage, #main-stream { height: 100dvh; }
+}
+
+/* ---------- CELULAR / TELAS ESTREITAS ---------- */
+@media (max-width: 720px) {
+  /* lobby: lista de salas em cima, formulário embaixo */
+  .lobby-screen { flex-direction: column; overflow-y: auto; }
+  .lobby-side { width: 100%; flex: none; border-right: 0; border-bottom: 1px solid #282a36; padding: 16px; }
+  .my-rooms { flex: none; max-height: 34vh; }
+  .lobby-main { flex: none; overflow: visible; padding: 20px 16px 32px; }
+  .lobby-main-head { flex-wrap: wrap; }
+  .lobby-main-head h1 { font-size: 20px; }
+  .lobby-form-card { max-width: none; }
+  .admin-drawer { width: 100%; }
+
+  /* sala */
+  header#main-header { height: auto; min-height: 48px; padding: 6px 10px; flex-wrap: wrap; gap: 6px; }
+  .header-left, .header-right { gap: 6px; flex-wrap: wrap; }
+  .room-info-badge { max-width: 56vw; font-size: 11px; padding: 4px 10px; }
+  #room-name-display { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-icon { width: 34px; height: 34px; }
+
+  .cams-overlay {
+    gap: 10px !important; padding: 70px 10px 150px !important;
+    height: 100%; max-height: 100% !important; align-content: center !important;
+  }
+  .cam-box.streamer-card { width: min(92vw, 440px) !important; height: min(24vh, 220px) !important; border-radius: 14px !important; }
+  .cams-overlay[data-dense="1"] .cam-box.streamer-card { width: calc(50% - 6px) !important; height: min(18vh, 160px) !important; }
+  .avatar-circle { width: 72px !important; height: 72px !important; }
+  .avatar-name { font-size: 15px !important; }
+  .avatar-status { display: none !important; }
+
+  footer#main-footer {
+    bottom: calc(10px + env(safe-area-inset-bottom)); max-width: 96vw;
+    flex-wrap: wrap; justify-content: center; border-radius: 26px; padding: 8px 10px; gap: 8px;
+  }
+  .dock-btn { width: 44px; height: 44px; }
+  .volume-container { display: none !important; } /* no celular o volume é o do aparelho */
+  .call-timer-badge { font-size: 11px; white-space: nowrap; }
+
+  .side-drawer { width: 100%; right: -100%; top: 0; height: 100dvh; }
+  .screen-switcher { top: 100px; }
+  .audio-unlock { top: 100px; }
+}
+
+/* celular deitado (pouca altura): cartões lado a lado e controles compactos */
+@media (max-height: 500px) {
+  header#main-header { height: 44px; padding: 0 12px; }
+  .btn-icon { width: 32px; height: 32px; }
+  .cams-overlay {
+    gap: 8px !important; padding: 52px 10px 70px !important;
+    height: 100%; max-height: 100% !important; align-content: center !important;
+  }
+  .cam-box.streamer-card { width: calc(25% - 8px) !important; min-width: 150px; height: 36vh !important; border-radius: 12px !important; }
+  .cams-overlay[data-dense="0"] .cam-box.streamer-card { width: calc(50% - 8px) !important; max-width: 320px; height: 46vh !important; }
+  .avatar-circle { width: 56px !important; height: 56px !important; }
+  .avatar-name, .avatar-status { display: none !important; } /* o nome já aparece na etiqueta */
+  footer#main-footer { bottom: 8px; padding: 5px 12px; gap: 8px; }
+  .dock-btn { width: 38px; height: 38px; }
+  .volume-container { display: none !important; }
+  .call-timer-badge { font-size: 11px; white-space: nowrap; }
+  .screen-switcher { top: 50px; }
+  .audio-unlock { top: 56px; }
+}

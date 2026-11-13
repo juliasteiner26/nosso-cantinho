@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win portable"
+  
   },
   "keywords": [],
   "author": "",
@@ -16,9 +17,9 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.nossocantinho.app",
+    "appId": "com.space⁷⁷⁷.app",
     "asarUnpack": ["node_modules/loopback-capture/**"],
-    "productName": "Nosso Cantinho",
+    "productName": "Space⁷⁷⁷",
     "win": {
       "target": "portable"
     }
@@ -28,5 +29,6 @@
   "dependencies": {
     "loopback-capture": "^4.0.0"
   }
+  
   
 }
