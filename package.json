@@ -1,34 +1,62 @@
 {
   "name": "site-compartilhamento",
+  "productName": "Space 777",
   "version": "1.0.0",
-  "description": "App duo de chamada, streaming e utilidades",
+  "description": "App de chamada, transmissão de tela e utilidades",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable"
-  
+    "dist": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable",
+    "release": "electron-builder --win nsis --publish always"
   },
   "keywords": [],
-  "author": "",
+  "author": "juliasteiner26",
   "license": "ISC",
   "type": "commonjs",
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "loopback-capture": "^4.0.0"
+  },
   "devDependencies": {
     "electron": "^43.4.1",
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.space⁷⁷⁷.app",
-    "asarUnpack": ["node_modules/loopback-capture/**"],
-    "productName": "Space⁷⁷⁷",
+    "appId": "com.space777.app",
+    "productName": "Space 777",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "app.js",
+      "style.css"
+    ],
+    "asarUnpack": [
+      "node_modules/loopback-capture/**"
+    ],
     "win": {
-      "target": "portable"
-    }
-    
-  },
-  
-  "dependencies": {
-    "loopback-capture": "^4.0.0"
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "Space 777",
+      "artifactName": "Space-777-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Space-777-Portatil-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "juliasteiner26",
+        "repo": "nosso-cantinho",
+        "releaseType": "release"
+      }
+    ]
   }
-  
-  
 }
