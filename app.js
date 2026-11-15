@@ -1,5 +1,3 @@
-// --- CARGOS ---
-const ADMIN_USER = "steiner777";
 const OLD_EXCLUSIVE_ROOM = "nosso-cantinho"; // sala antiga com PIN fixo no código (removida)
 
 // Prefixo dos IDs no servidor do PeerJS (evita colisão com outros apps)
@@ -8,6 +6,7 @@ const HEARTBEAT_MS = 2000;            // ping a cada 2s
 const HEARTBEAT_TIMEOUT_MS = 8000;    // sem sinal por 8s = a pessoa caiu
 const PEER_PROBE_TIMEOUT_MS = 5000;   // tempo para uma vaga de ID responder
 const JOIN_VERIFY_TIMEOUT_MS = 20000; // tempo máximo para confirmar a senha antes de desistir
+const PROTOCOL_VERSION = 2;           // sobe quando a forma de as pessoas conversarem mudar
 
 // Pessoas por sala (a sala exclusiva é sempre de 2). Como cada pessoa se liga a todas
 // as outras (não há servidor no meio), salas grandes pesam na internet de quem transmite.
@@ -34,6 +33,9 @@ let joinTrusted = false;      // senha já conhecida/confirmada (sala sua ou já
 let joinBusy = false;         // verificando a senha
 let joinSawFull = false;      // alguém respondeu "sala cheia"
 let joinTimeoutTimer = null;
+let roomEnteredAt = 0;
+let pinFailures = [];         // horários de senhas erradas recebidas (limite de tentativas)
+let micWarned = false;
 let myPeerId = '';
 let mySlot = -1;
 let peer = null;
@@ -56,7 +58,7 @@ let masterVoiceVolume = 1;
 const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%235865f2'/><circle cx='50' cy='38' r='18' fill='%23ffffff'/><path d='M22 80c0-15 12-25 28-25s28 10 28 25z' fill='%23ffffff'/></svg>";
 
 let myProfile = {
-  name: localStorage.getItem('profile_name') || '',
+  name: '',   // vem do nome de usuário (ou do nome de exibição salvo) quando você entra
   avatar: defaultAvatar,
   status: '🟢 Disponível'
 };
@@ -67,12 +69,9 @@ let myProfile = {
 const authScreen = document.getElementById('auth-screen');
 const lobbyScreen = document.getElementById('lobby-screen');
 const authUsername = document.getElementById('auth-username');
-const authPassword = document.getElementById('auth-password');
 const btnLogin = document.getElementById('btn-login');
-const btnRegister = document.getElementById('btn-register');
 const btnLogout = document.getElementById('btn-logout');
 const userWelcomeText = document.getElementById('user-welcome-text');
-const adminBadge = document.getElementById('admin-badge');
 const myRoomsList = document.getElementById('my-rooms-list');
 const sidebarUserName = document.getElementById('sidebar-user-name');
 const sidebarUserAvatar = document.getElementById('sidebar-user-avatar');
@@ -84,14 +83,6 @@ const tabCreate = document.getElementById('tab-create');
 const panelJoin = document.getElementById('panel-join');
 const panelCreate = document.getElementById('panel-create');
 
-const btnOpenAdmin = document.getElementById('btn-open-admin');
-const adminDrawer = document.getElementById('admin-drawer');
-const adminScrim = document.getElementById('admin-scrim');
-const btnCloseAdmin = document.getElementById('btn-close-admin');
-const tabAdminUsers = document.getElementById('tab-admin-users');
-const tabAdminRooms = document.getElementById('tab-admin-rooms');
-const adminSearch = document.getElementById('admin-search');
-const adminList = document.getElementById('admin-list');
 const createExclusive = document.getElementById('create-exclusive');
 const rouletteModal = document.getElementById('roulette-modal');
 const rouletteInput = document.getElementById('roulette-options-input');
@@ -146,21 +137,18 @@ const micSelect = document.getElementById('mic-select');
 const camSelect = document.getElementById('camera-select');
 const speakerSelect = document.getElementById('speaker-select');
 
-const pwCurrent = document.getElementById('pw-current');
-const pwNew = document.getElementById('pw-new');
-const pwConfirm = document.getElementById('pw-confirm');
-const pwMessage = document.getElementById('pw-message');
-const btnChangePassword = document.getElementById('btn-change-password');
 
 // ---------------------------------------------------------------------------
 // UTILIDADES
 // ---------------------------------------------------------------------------
+let toastTimer = null;
 function showToast(msg) {
   const toast = document.getElementById('toast-notification');
   if (!toast) return;
   toast.innerText = msg;
   toast.classList.remove('hidden');
-  setTimeout(() => toast.classList.add('hidden'), 3500);
+  clearTimeout(toastTimer); // um aviso novo não some antes da hora por causa do anterior
+  toastTimer = setTimeout(() => toast.classList.add('hidden'), 3500);
 }
 
 function escapeHtml(str) {
@@ -186,38 +174,11 @@ function setStatus(text, connected = false) {
   statusBadge.classList.toggle('connected', connected);
 }
 
-function isAdminUser() {
-  return !!currentUser && currentUser.username.toLowerCase() === ADMIN_USER.toLowerCase();
-}
+
 
 // ---------------------------------------------------------------------------
-// SALAS (banco local) E CONTAS (admin)
+// SALAS (banco local)
 // ---------------------------------------------------------------------------
-
-
-// Admin: só mexe em contas (redefinir senha / excluir). Não dá acesso a nenhuma sala.
-const DEFAULT_RESET_PASSWORD = '123456';
-
-function resetUserPassword(username) {
-  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-  if (!usersDb[username]) return;
-  if (!confirm(`Redefinir a senha de "${username}" para ${DEFAULT_RESET_PASSWORD}?`)) return;
-  usersDb[username] = DEFAULT_RESET_PASSWORD;
-  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
-  showToast(`Senha de ${username} redefinida para ${DEFAULT_RESET_PASSWORD}.`);
-}
-
-function deleteUser(username) {
-  if (!confirm(`Excluir a conta "${username}" deste computador?`)) return;
-  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-  delete usersDb[username];
-  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
-  localStorage.removeItem(`app_recent_rooms:${username}`);
-  renderAdminPanel();
-}
-
-
-
 
 
 function getRoomsDatabase() {
@@ -241,7 +202,6 @@ function deleteRoomFromDb(name) {
   delete db[name];
   localStorage.setItem('app_rooms_db', JSON.stringify(db));
   renderMyRooms();
-  renderAdminPanel();
 }
 
 
@@ -369,112 +329,7 @@ myRoomsList.addEventListener('click', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// PAINEL ADMIN (gaveta lateral, só para a administradora)
-// ---------------------------------------------------------------------------
-let adminTab = 'users';
-
-function setAdminTab(tab) {
-  adminTab = tab;
-  tabAdminUsers.classList.toggle('active', tab === 'users');
-  tabAdminRooms.classList.toggle('active', tab === 'rooms');
-  tabAdminUsers.setAttribute('aria-pressed', String(tab === 'users'));
-  tabAdminRooms.setAttribute('aria-pressed', String(tab === 'rooms'));
-  adminSearch.placeholder = tab === 'users' ? 'Buscar usuário' : 'Buscar sala';
-  renderAdminPanel();
-}
-
-function renderAdminPanel() {
-  if (!adminList) return;
-  if (!isAdminUser()) { adminList.innerHTML = ''; return; }
-
-  const term = adminSearch.value.trim().toLowerCase();
-  let html = '';
-
-  if (adminTab === 'users') {
-    const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-    const names = Object.keys(usersDb).filter(u =>
-      u.toLowerCase() !== ADMIN_USER.toLowerCase() && u.toLowerCase().includes(term));
-
-    html = '<p class="lobby-empty">Contas criadas neste aparelho.</p>';
-    if (names.length === 0) {
-      html += '<p class="lobby-empty">Nenhum usuário encontrado.</p>';
-    } else {
-      names.forEach(u => {
-        const name = escapeHtml(u);
-        html += `
-          <div class="admin-row">
-            <span class="mini-avatar">${escapeHtml((u.trim()[0] || '?').toUpperCase())}</span>
-            <strong>${name}</strong>
-            <span class="sp"></span>
-            <button class="btn-ghost-sm" data-action="reset-password" data-name="${name}">Redefinir senha</button>
-            <button class="btn-danger-sm" data-action="delete-user" data-name="${name}">Excluir</button>
-          </div>
-        `;
-      });
-    }
-  } else {
-    const db = getRoomsDatabase();
-    // Salas exclusivas são privadas: nem a admin as vê ou mexe nelas por aqui
-    const names = Object.keys(db).filter(n => !db[n].exclusive && n.includes(term));
-
-    html = '<p class="lobby-empty">Salas exclusivas não aparecem aqui.</p>';
-    if (names.length === 0) {
-      html += '<p class="lobby-empty">Nenhuma sala encontrada.</p>';
-    } else {
-      names.forEach(n => {
-        const name = escapeHtml(n);
-        html += `
-          <div class="admin-row">
-            <div class="room-card-info">
-              <strong>${name}</strong>
-              <span>dono: ${escapeHtml(db[n].owner)}</span>
-            </div>
-            <button class="btn-danger-sm" data-action="delete-room" data-name="${name}">Excluir</button>
-          </div>
-        `;
-      });
-    }
-  }
-
-  adminList.innerHTML = html;
-}
-
-function openAdminPanel() {
-  if (!isAdminUser()) return;
-  renderAdminPanel();
-  adminDrawer.classList.add('open');
-  adminScrim.classList.add('active');
-}
-
-function closeAdminPanel() {
-  adminDrawer.classList.remove('open');
-  adminScrim.classList.remove('active');
-}
-
-adminList.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-action]');
-  if (!btn) return;
-  const name = btn.dataset.name;
-  if (btn.dataset.action === 'reset-password') resetUserPassword(name);
-  else if (btn.dataset.action === 'delete-user') deleteUser(name);
-  else if (btn.dataset.action === 'delete-room') {
-    const info = getRoomsDatabase()[name];
-    if (info && info.exclusive) return; // exclusiva: nem a admin mexe
-    if (confirm(`Excluir a sala "${name}"?`)) deleteRoomFromDb(name);
-  }
-});
-
-btnOpenAdmin.addEventListener('click', openAdminPanel);
-btnCloseAdmin.addEventListener('click', closeAdminPanel);
-adminScrim.addEventListener('click', closeAdminPanel);
-tabAdminUsers.addEventListener('click', () => setAdminTab('users'));
-tabAdminRooms.addEventListener('click', () => setAdminTab('rooms'));
-adminSearch.addEventListener('input', renderAdminPanel);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAdminPanel(); });
-
-
-// ---------------------------------------------------------------------------
-// LOGIN / CADASTRO
+// ENTRAR COM NOME DE USUÁRIO
 // ---------------------------------------------------------------------------
 function updateSidebarUser() {
   const name = myProfile.name || (currentUser ? currentUser.username : '');
@@ -488,61 +343,34 @@ function updateAuthUI() {
     lobbyScreen.classList.remove('hidden');
     userWelcomeText.innerText = `@${currentUser.username}`;
 
-    adminBadge.classList.toggle('hidden', !isAdminUser());
-    btnOpenAdmin.classList.toggle('hidden', !isAdminUser());
-
-    if (!myProfile.name) myProfile.name = currentUser.username;
+    // o nome de exibição é guardado por usuário; sem um salvo, vale o nome de usuário
+    myProfile.name = localStorage.getItem(`profile_name:${currentUser.username}`) || currentUser.username;
     updateSidebarUser();
     updateProfileUI();
     renderMyRooms();
-    renderAdminPanel();
   } else {
-    closeAdminPanel();
     authScreen.classList.remove('hidden');
     lobbyScreen.classList.add('hidden');
+    authUsername.value = localStorage.getItem('app_last_username') || '';
   }
 }
 
+// Entrar só com nome de usuário (as contas ficam guardadas neste aparelho)
+function normalizeUsername(raw) {
+  return String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+}
+
 btnLogin.addEventListener('click', () => {
-  const typed = authUsername.value.trim();
-  const pass = authPassword.value.trim();
-  if (!typed || !pass) return showToast('Preencha usuário e senha!');
-
-  // A administradora sempre usa o mesmo nome, não importa maiúsculas/minúsculas
-  const user = typed.toLowerCase() === ADMIN_USER.toLowerCase() ? ADMIN_USER : typed;
-  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-
-  const okByDb = !!usersDb[user] && usersDb[user] === pass;
-  // A senha padrão da admin só vale enquanto ela não trocar a senha no perfil
-  const okAdminDefault = user === ADMIN_USER && !usersDb[user] && pass === "777";
-
-  if (okByDb || okAdminDefault) {
-    currentUser = { username: user };
-    localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
-    updateAuthUI();
-  } else {
-    showToast('Usuário ou senha incorretos!');
-  }
-});
-
-btnRegister.addEventListener('click', () => {
-  const user = authUsername.value.trim();
-  const pass = authPassword.value.trim();
-  if (!user || !pass) return showToast('Digite usuário e senha para cadastrar!');
-
-  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-  if (usersDb[user] || user.toLowerCase() === ADMIN_USER.toLowerCase()) {
-    return showToast('Esse usuário já existe. Use "Entrar" (a senha pode ser trocada no Perfil).');
-  }
-
-  usersDb[user] = pass;
-  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
+  const user = normalizeUsername(authUsername.value);
+  if (user.length < 2) return showToast('Digite um nome de usuário (mínimo 2 letras).');
 
   currentUser = { username: user };
   localStorage.setItem('app_logged_user', JSON.stringify(currentUser));
-  showToast('Conta criada com sucesso!');
+  localStorage.setItem('app_last_username', user);
   updateAuthUI();
 });
+
+authUsername.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnLogin.click(); });
 
 btnLogout.addEventListener('click', () => {
   localStorage.removeItem('app_logged_user');
@@ -554,7 +382,7 @@ btnLogout.addEventListener('click', () => {
 function applyDisplayName(val) {
   if (!val) return;
   myProfile.name = val.slice(0, 40);
-  localStorage.setItem('profile_name', myProfile.name);
+  localStorage.setItem(`profile_name:${currentUser.username}`, myProfile.name);
   const profileInput = document.getElementById('profile-name-input');
   if (profileInput) profileInput.value = myProfile.name;
   updateSidebarUser();
@@ -679,6 +507,7 @@ function makePeerEntry(id, conn, initiatedByMe) {
     verified: false,
     probing: false,
     probeTimer: null,
+    shadow: null,      // ligação recebida de reserva enquanto a minha (ainda sem resposta) não abre
     lastSeen: Date.now(),
     profile: { name: 'Convidado', avatar: defaultAvatar, status: 'Conectado' },
     voiceCall: null,
@@ -746,6 +575,7 @@ function claimSlot(session, k) {
     p.on('connection', conn => handleIncomingConnection(conn, session));
     p.on('call', call => handleIncomingCall(call));
     probeRoom(session, p);
+    if (joinTrusted && !roomEntered) enterRoomUI(session); // senha já conhecida: não precisa esperar as outras vagas
   });
 
   p.on('error', err => {
@@ -793,7 +623,7 @@ function finishProbe(session, id) {
 function maybeResolveJoin(session) {
   if (session !== roomSession || !inRoom || roomEntered) return;
   if (probesPending > 0) return;
-  const waiting = Array.from(peers.values()).some(e => e.initiatedByMe && !e.verified);
+  const waiting = Array.from(peers.values()).some(e => !e.verified); // alguém ainda confirmando a senha
   if (waiting) return;
   if (joinTrusted) enterRoomUI(session);
   else failJoin('Ninguém está nessa sala agora, então não dá para conferir a senha. Peça para o dono entrar primeiro ou crie a sala em "Criar sala".');
@@ -850,8 +680,13 @@ function handleIncomingConnection(conn, session) {
       removePeerEntry(id, { silent: true, noResolve: true });
     } else if (existing.initiatedByMe) {
       // as duas pessoas ligaram uma para a outra ao mesmo tempo: vale a conexão iniciada pelo menor ID
-      if (id < myPeerId) removePeerEntry(id, { silent: true, noResolve: true });
-      else { safeClose(conn); return; }
+      if (id < myPeerId) {
+        removePeerEntry(id, { silent: true, noResolve: true, noShadow: true });
+      } else {
+        // a minha ligação vence, mas pode estar sem resposta: guarda a dela de reserva
+        keepAsShadow(existing, conn);
+        return;
+      }
     } else {
       removePeerEntry(id, { silent: true, noResolve: true });
     }
@@ -860,6 +695,29 @@ function handleIncomingConnection(conn, session) {
   const entry = makePeerEntry(id, conn, false);
   peers.set(id, entry);
   attachConn(entry, conn, session);
+}
+
+function keepAsShadow(entry, conn) {
+  if (entry.shadow) safeClose(entry.shadow.conn);
+  const shadow = { conn, buf: [] };
+  entry.shadow = shadow;
+  conn.on('data', d => { if (entry.shadow === shadow) shadow.buf.push(d); });
+  conn.on('close', () => { if (entry.shadow === shadow) entry.shadow = null; });
+}
+
+// A minha ligação não deu em nada: passa a valer a que a outra pessoa tinha feito
+function adoptShadow(shadow, session) {
+  const conn = shadow.conn;
+  if (!inRoom || session !== roomSession || peers.has(conn.peer)) { safeClose(conn); return; }
+  const entry = makePeerEntry(conn.peer, conn, false);
+  peers.set(entry.id, entry);
+  attachConn(entry, conn, session);
+  shadow.buf.forEach(d => {
+    if (peers.get(entry.id) === entry && entry.conn === conn) {
+      entry.lastSeen = Date.now();
+      handlePeerMessage(entry, d, session);
+    }
+  });
 }
 
 function attachConn(entry, conn, session) {
@@ -871,8 +729,9 @@ function attachConn(entry, conn, session) {
       clearTimeout(entry.probeTimer);
       probesPending = Math.max(0, probesPending - 1);
     }
+    if (entry.shadow) { safeClose(entry.shadow.conn); entry.shadow = null; } // a minha abriu: a reserva não precisa
     if (entry.initiatedByMe) {
-      sendTo(entry, { type: 'HELLO', pin: currentRoomPin, profile: myProfile });
+      sendTo(entry, { type: 'HELLO', proto: PROTOCOL_VERSION, pin: currentRoomPin, entered: roomEntered, age: myRoomAge(), exclusive: currentRoomExclusive, profile: myProfile });
     }
   };
 
@@ -910,12 +769,16 @@ function handlePeerMessage(entry, data, session) {
       if (entry.initiatedByMe && !entry.verified) onPinOk(entry, data, session);
       break;
 
-    case 'PIN_REJECTED':
-      if (!entry.initiatedByMe || roomEntered) { removePeerEntry(entry.id, { silent: true }); break; }
-      // senha errada: volta para o formulário e mostra o erro lá
-      if (joinOrigin === 'list') failJoin('A senha dessa sala mudou ou está incorreta. Digite a senha atual.');
-      else if (joinOrigin === 'create') failJoin('Já existe uma sala ativa com esse nome e outra senha. Escolha outro nome.');
-      else failJoin('❌ Senha incorreta. Confira com quem criou a sala.');
+    case 'PIN_REJECTED': // senha errada: volta para o formulário e mostra o erro lá
+      if (!entry.initiatedByMe) { removePeerEntry(entry.id, { silent: true }); break; }
+      if (!roomEntered || (canBounceFromRoom() && isOlderThanMe(data.age))) failJoin(wrongPinMessage());
+      else removePeerEntry(entry.id, { silent: true }); // quem recusou chegou depois de mim: eu é que sou a sala
+      break;
+
+    case 'VERSION_MISMATCH':
+      if (!entry.initiatedByMe) { removePeerEntry(entry.id, { silent: true }); break; }
+      if (!roomEntered || (canBounceFromRoom() && isOlderThanMe(data.age))) failJoin(VERSION_MESSAGE);
+      else removePeerEntry(entry.id, { silent: true });
       break;
 
     case 'ROOM_FULL':
@@ -924,6 +787,8 @@ function handlePeerMessage(entry, data, session) {
         joinSawFull = true;
         showToast('A sala está ocupada. Tentando de novo...');
         scheduleReconnect(session, 4000);
+      } else if (canBounceFromRoom() && isOlderThanMe(data.age)) {
+        failJoin('A sala está cheia no momento. Tente de novo em instantes.');
       } else {
         removePeerEntry(entry.id, { silent: true });
       }
@@ -959,13 +824,32 @@ function handlePeerMessage(entry, data, session) {
 
 function onHello(entry, data, session) {
   const drop = () => { if (peers.get(entry.id) === entry) removePeerEntry(entry.id, { silent: true }); };
-  const reject = (type) => { sendTo(entry, { type }); setTimeout(drop, 300); };
+  const reject = (type) => { sendTo(entry, { type, age: myRoomAge() }); setTimeout(drop, 300); };
 
-  if (String(data.pin).trim() !== currentRoomPin) return reject('PIN_REJECTED');
+  if (data.proto !== PROTOCOL_VERSION) {
+    reject('VERSION_MISMATCH');
+    // quem está chegando (ou chegou depois) é quem avisa que a versão é diferente
+    if (!roomEntered || (canBounceFromRoom() && isOlderThanMe(data.age))) failJoin(VERSION_MESSAGE);
+    return;
+  }
+
+  // Contra tentativas de adivinhar a senha: 6 erros em 1 minuto bloqueiam novas tentativas por 1 minuto
+  const now = Date.now();
+  pinFailures = pinFailures.filter(ts => now - ts < 60000);
+  if (pinFailures.length >= 6) return reject('PIN_REJECTED');
+  if (String(data.pin).trim() !== currentRoomPin) {
+    pinFailures.push(now);
+    reject('PIN_REJECTED');
+    // quem já estava na sala antes de mim tem outra senha: a minha (salva) deve estar velha
+    if (data.entered === true && canBounceFromRoom() && isOlderThanMe(data.age)) failJoin(wrongPinMessage());
+    return;
+  }
 
   if (!roomEntered) {
-    if (!joinTrusted) return reject('NOT_READY');
-    enterRoomUI(session); // senha já conhecida: entro e já recebo a pessoa
+    // Se quem ligou já está dentro da sala e a senha confere, a senha que eu digitei está certa
+    if (!joinTrusted && data.entered !== true) return reject('NOT_READY');
+    if (!joinTrusted) currentRoomExclusive = !!data.exclusive;
+    enterRoomUI(session);
   }
 
   if (verifiedPeers().length + 1 >= roomCapacity()) return reject('ROOM_FULL');
@@ -1000,10 +884,12 @@ function markVerified(entry, { announce }) {
 }
 
 // Tira uma pessoa da lista (saiu, caiu ou a vaga estava vazia)
-function removePeerEntry(id, { silent = false, noResolve = false } = {}) {
+function removePeerEntry(id, { silent = false, noResolve = false, noShadow = false } = {}) {
   const entry = peers.get(id);
   if (!entry) return;
   peers.delete(id);
+  const shadow = entry.shadow;
+  entry.shadow = null;
 
   clearTimeout(entry.probeTimer);
   if (entry.probing) {
@@ -1028,11 +914,15 @@ function removePeerEntry(id, { silent = false, noResolve = false } = {}) {
     updateRoomStatus();
     applyScreenBitrates();
   }
+  if (shadow) {
+    if (noShadow || wasVerified) safeClose(shadow.conn);
+    else adoptShadow(shadow, roomSession);
+  }
   if (!noResolve) maybeResolveJoin(roomSession);
 }
 
 function clearAllPeers() {
-  Array.from(peers.keys()).forEach(id => removePeerEntry(id, { silent: true, noResolve: true }));
+  Array.from(peers.keys()).forEach(id => removePeerEntry(id, { silent: true, noResolve: true, noShadow: true }));
 }
 
 // Batimento: detecta quem caiu sem avisar (queda de internet, app fechado)
@@ -1428,7 +1318,7 @@ function setJoinBusy(busy) {
 function joinRoom(roomName, pin, origin = 'join', exclusiveFlag = false) {
   if (joinBusy) return;
   leaveRoom({ silent: true });
-  closeAdminPanel();
+  micWarned = false;
 
   const name = normalizeRoomName(roomName);
   const cleanPin = String(pin).trim();
@@ -1466,6 +1356,7 @@ async function enterRoomUI(session) {
 
   if (!roomEntered) {
     roomEntered = true;
+    roomEnteredAt = Date.now();
     clearTimeout(joinTimeoutTimer);
     setJoinBusy(false);
     rememberRoom(currentRoomName, currentRoomPin, currentRoomExclusive);
@@ -1488,10 +1379,34 @@ async function enterRoomUI(session) {
   await startMicrophone();
 }
 
+// Há quanto tempo estou dentro da sala (ms); -1 se ainda não entrei
+function myRoomAge() {
+  return roomEntered ? Date.now() - roomEnteredAt : -1;
+}
+
+// A outra pessoa já estava na sala bem antes de mim? (margem de 1s; compara tempo de permanência, não relógios)
+function isOlderThanMe(theirAge) {
+  return roomEntered && typeof theirAge === 'number' && theirAge >= 0 && theirAge > myRoomAge() + 1000;
+}
+
+function wrongPinMessage() {
+  if (joinOrigin === 'list') return 'A senha dessa sala mudou ou está incorreta. Digite a senha atual.';
+  if (joinOrigin === 'create') return 'Já existe uma sala ativa com esse nome e outra senha. Escolha outro nome.';
+  return '❌ Senha incorreta. Confira com quem criou a sala.';
+}
+
+const VERSION_MESSAGE = 'Esta sala usa outra versão do app. Atualize o app (ou recarregue a página do site) e tente de novo.';
+
+// Ainda dá para "voltar" ao formulário? (antes de entrar, ou logo depois de entrar sozinho)
+function canBounceFromRoom() {
+  return !roomEntered || (verifiedPeers().length === 0 && Date.now() - roomEnteredAt < 15000);
+}
+
 function failJoin(msg) {
   const origin = joinOrigin;
   const room = currentRoomName;
   leaveRoom({ silent: true });
+  updateAuthUI(); // garante o lobby visível (a pessoa pode já ter "entrado" sozinha)
   showJoinError(origin, room, msg);
 }
 
@@ -1597,7 +1512,13 @@ function startMicrophone() {
         micStream = await openMicStream();
         micStream.getAudioTracks().forEach(t => t.enabled = !isMicMuted);
         syncMicToCalls();
-      } catch (e) { console.warn('Sem mic:', e); }
+      } catch (e) {
+        console.warn('Sem mic:', e);
+        if (!micWarned) {
+          micWarned = true;
+          showToast('Não foi possível usar o microfone. Confira a permissão do navegador ou do Windows.');
+        }
+      }
     })().finally(() => { micStartPromise = null; });
   }
   return micStartPromise;
@@ -2134,58 +2055,16 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
 }
 
 // ===========================================================================
-// PERFIL: trocar a própria senha
+// PERFIL: nome de exibição
 // ===========================================================================
-function showPwMessage(msg, ok = false) {
-  pwMessage.innerText = msg;
-  pwMessage.classList.remove('hidden');
-  pwMessage.classList.toggle('success', ok);
-}
-
-function resetPasswordForm() {
-  [pwCurrent, pwNew, pwConfirm].forEach(i => { i.value = ''; });
-  pwMessage.classList.add('hidden');
-  pwMessage.classList.remove('success');
-  pwMessage.innerText = '';
-}
-
 function openProfileModal() {
   document.getElementById('profile-name-input').value = myProfile.name || '';
-  resetPasswordForm();
   document.getElementById('profile-modal').classList.add('active');
 }
 
 function closeProfileModal() {
-  resetPasswordForm();
   document.getElementById('profile-modal').classList.remove('active');
 }
-
-function changePassword() {
-  if (!currentUser) return;
-  const user = currentUser.username;
-  const current = pwCurrent.value.trim();
-  const next = pwNew.value.trim();
-  const confirmValue = pwConfirm.value.trim();
-
-  const usersDb = JSON.parse(localStorage.getItem('app_users_db') || '{}');
-  // A admin ainda sem senha própria usa a padrão ("777") como senha atual
-  const knownPass = usersDb[user] !== undefined ? usersDb[user] : (isAdminUser() ? '777' : null);
-
-  if (knownPass === null || current !== knownPass) return showPwMessage('Senha atual incorreta.');
-  if (next.length < 4) return showPwMessage('A nova senha precisa ter pelo menos 4 caracteres.');
-  if (next !== confirmValue) return showPwMessage('A confirmação não é igual à nova senha.');
-  if (next === current) return showPwMessage('A nova senha precisa ser diferente da atual.');
-
-  usersDb[user] = next;
-  localStorage.setItem('app_users_db', JSON.stringify(usersDb));
-  resetPasswordForm();
-  showPwMessage('✅ Senha alterada com sucesso!', true);
-}
-
-btnChangePassword.addEventListener('click', changePassword);
-[pwCurrent, pwNew, pwConfirm].forEach(i => {
-  i.addEventListener('keydown', (e) => { if (e.key === 'Enter') changePassword(); });
-});
 
 // ===========================================================================
 // SORTEADOR (só na sala exclusiva): o resultado aparece para os dois
@@ -2218,7 +2097,8 @@ function migrateOldSetup() {
       if (cleaned.length !== list.length) localStorage.setItem(k, JSON.stringify(cleaned));
     } catch (e) {}
   });
-  localStorage.removeItem('app_vip_users'); // lista de VIPs não existe mais
+  localStorage.removeItem('app_vip_users');  // lista de VIPs não existe mais
+  localStorage.removeItem('app_users_db');   // senhas de conta não existem mais (só nome de usuário)
 }
 
 // ===========================================================================
