@@ -112,11 +112,6 @@ body {
   width: 26px; height: 26px; border-radius: 6px; font-size: 11px; cursor: pointer; flex: none;
 }
 .btn-remove-room:hover { color: #fff; border-color: #ed4245; }
-.btn-danger-sm {
-  background: #b83235; color: #fff; border: none;
-  padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
-}
-
 .lobby-user { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 .user-avatar, .mini-avatar {
   width: 34px; height: 34px; border-radius: 50%; flex: none;
@@ -157,41 +152,6 @@ body {
   display: flex; flex-direction: column; gap: 6px;
 }
 .lobby-form-card .btn-primary { margin-top: 8px; }
-
-/* ---------- PAINEL ADMIN (gaveta lateral) ---------- */
-.admin-scrim {
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.55);
-  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
-  z-index: 1;
-}
-.admin-scrim.active { opacity: 1; pointer-events: auto; }
-
-.admin-drawer {
-  position: absolute; top: 0; right: 0; bottom: 0;
-  width: 380px; max-width: 100%;
-  background: #11131b; border-left: 1px solid var(--accent-color);
-  padding: 20px; z-index: 2;
-  display: flex; flex-direction: column; gap: 14px;
-  transform: translateX(100%); visibility: hidden;
-  transition: transform 0.25s ease, visibility 0s linear 0.25s;
-}
-.admin-drawer.open {
-  transform: translateX(0); visibility: visible;
-  transition: transform 0.25s ease;
-}
-.admin-head { display: flex; justify-content: space-between; align-items: center; }
-.admin-head h3 { font-size: 17px; color: #fff; }
-.admin-tabs { display: flex; gap: 8px; }
-.admin-input {
-  background: #0b0e14; border: 1px solid #33364a; color: #fff;
-  padding: 9px 12px; border-radius: 8px; font-size: 13px; width: 100%;
-}
-.admin-list { flex: 1; min-height: 0; overflow-y: auto; }
-.admin-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 0; border-bottom: 1px solid #282a36; font-size: 13px;
-}
 
 
 .btn-primary {
@@ -375,14 +335,6 @@ header#main-header {
 }
 .volume-container span { font-size: 11px; font-weight: bold; color: #fff; }
 
-.volume-hud {
-  position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.85); padding: 8px 16px; border-radius: 20px;
-  color: #fff; font-size: 14px; font-weight: bold; z-index: 999;
-  display: flex; align-items: center; gap: 8px; pointer-events: none;
-}
-.volume-hud.hidden { display: none !important; }
-
 footer#main-footer {
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
   background: var(--panel-bg); padding: 8px 16px; border-radius: 40px;
@@ -461,19 +413,12 @@ footer#main-footer {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   object-fit: cover; z-index: 1; background: #000;
 }
-#local-cam { transform: scaleX(-1); }
+video.mirrored { transform: scaleX(-1); } /* câmera no modo espelhado */
 
 /* ---------- MODAIS ---------- */
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .modal-divider { border: 0; border-top: 1px solid #282a36; margin: 16px 0 12px 0; }
 .modal-subtitle { font-size: 14px; color: #fff; margin-bottom: 10px; }
-
-.btn-ghost-sm {
-  background: transparent; color: #e3e5e8; border: 1px solid #3a3e55;
-  padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
-}
-.btn-ghost-sm:hover { border-color: var(--accent-color); }
-.admin-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .check-row {
   display: flex; gap: 10px; align-items: flex-start;
@@ -524,7 +469,6 @@ footer#main-footer {
   .lobby-main-head { flex-wrap: wrap; }
   .lobby-main-head h1 { font-size: 20px; }
   .lobby-form-card { max-width: none; }
-  .admin-drawer { width: 100%; }
 
   /* sala */
   header#main-header { height: auto; min-height: 48px; padding: 6px 10px; flex-wrap: wrap; gap: 6px; }
@@ -574,4 +518,15 @@ footer#main-footer {
   .call-timer-badge { font-size: 11px; white-space: nowrap; }
   .screen-switcher { top: 50px; }
   .audio-unlock { top: 56px; }
+}
+
+/* ---------- SORTEADOR (sala exclusiva) ---------- */
+.modal-content textarea {
+  width: 100%; background: #0b0e14; border: 1px solid #282a36; color: #fff;
+  padding: 10px; border-radius: 8px; font-family: inherit; font-size: 13px;
+  resize: vertical; user-select: text; margin: 8px 0;
+}
+.roulette-result {
+  margin: 10px 0; padding: 14px; text-align: center; font-size: 18px; font-weight: bold;
+  background: #181a24; border: 1px solid #282a36; border-radius: 10px; color: #fff;
 }

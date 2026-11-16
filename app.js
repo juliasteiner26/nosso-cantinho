@@ -133,6 +133,8 @@ const btnInstallUpdate = document.getElementById('btn-install-update');
 const appVersionEl = document.getElementById('app-version');
 
 const settingsModal = document.getElementById('settings-modal');
+const mirrorSelfCheck = document.getElementById('cam-mirror-self');
+const mirrorOthersCheck = document.getElementById('cam-mirror-others');
 const micSelect = document.getElementById('mic-select');
 const camSelect = document.getElementById('camera-select');
 const speakerSelect = document.getElementById('speaker-select');
@@ -538,7 +540,7 @@ function sanitizeProfile(p) {
   const name = typeof p.name === 'string' ? p.name.slice(0, 40).trim() : '';
   const avatar = (typeof p.avatar === 'string' && p.avatar.startsWith('data:image/')) ? p.avatar : defaultAvatar;
   const status = typeof p.status === 'string' ? p.status.slice(0, 40) : 'Conectado';
-  return { name: name || 'Convidado', avatar, status };
+  return { name: name || 'Convidado', avatar, status, mirror: p.mirror === true };
 }
 
 // ---------------------------------------------------------------------------
@@ -1111,6 +1113,7 @@ function updatePeerCard(entry) {
   entry.card.name.textContent = entry.profile.name;
   entry.card.status.textContent = entry.profile.status || '';
   entry.card.tag.textContent = entry.profile.name;
+  entry.card.video.classList.toggle('mirrored', !!entry.profile.mirror); // a pessoa escolheu aparecer espelhada
 }
 
 function showPeerCam(entry) {
@@ -1888,6 +1891,15 @@ chatInput.addEventListener('keydown', (e) => {
 // ===========================================================================
 // CÂMERA
 // ===========================================================================
+// Modo espelhado: "para mim" muda só a sua tela; "para os outros" avisa quem assiste para inverter a sua imagem
+function getMirrorSelf() { return localStorage.getItem('app_cam_mirror_self') !== '0'; } // padrão: ligado
+function getMirrorOthers() { return localStorage.getItem('app_cam_mirror_others') === '1'; }
+
+function applyMirror() {
+  localCam.classList.toggle('mirrored', getMirrorSelf());
+  myProfile.mirror = getMirrorOthers();
+}
+
 function updateCamButton() {
   btnToggleCam.classList.toggle('btn-highlight', !!camStream);
   btnToggleCam.title = camStream ? 'Desligar câmera' : 'Ligar câmera';
@@ -2025,10 +2037,23 @@ async function ensureDeviceLabels() {
 }
 
 async function openSettings() {
+  mirrorSelfCheck.checked = getMirrorSelf();
+  mirrorOthersCheck.checked = getMirrorOthers();
   settingsModal.classList.add('active');
   await ensureDeviceLabels();
   await refreshDeviceLists();
 }
+
+mirrorSelfCheck.addEventListener('change', () => {
+  localStorage.setItem('app_cam_mirror_self', mirrorSelfCheck.checked ? '1' : '0');
+  applyMirror();
+});
+
+mirrorOthersCheck.addEventListener('change', () => {
+  localStorage.setItem('app_cam_mirror_others', mirrorOthersCheck.checked ? '1' : '0');
+  applyMirror();
+  broadcast({ type: 'PROFILE_UPDATE', profile: myProfile }); // quem está na sala passa a ver já
+});
 
 micSelect.addEventListener('change', () => {
   setPref('app_mic_id', micSelect.value);
@@ -2277,5 +2302,6 @@ window.addEventListener('beforeunload', () => {
 });
 
 migrateOldSetup();
+applyMirror();
 applySpeakerToAudioElements();
 updateAuthUI();
