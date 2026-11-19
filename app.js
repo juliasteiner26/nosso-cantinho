@@ -284,7 +284,7 @@ function renderMyRooms() {
   const rooms = getMyRooms();
 
   if (rooms.length === 0) {
-    myRoomsList.innerHTML = '<p class="lobby-empty">Você ainda não tem salas. Crie uma ou entre na sala de um amigo; ela fica salva aqui.</p>';
+    myRoomsList.innerHTML = '<p class="lobby-empty">Você ainda não tem salas. Crie uma ou entre em uma sala; ela fica salva aqui.</p>';
     return;
   }
 
@@ -416,7 +416,7 @@ function setLobbyTab(tab) {
   tabCreate.setAttribute('aria-pressed', String(!isJoin));
   lobbyTitle.innerText = isJoin ? 'Entrar numa sala' : 'Criar uma sala';
   lobbyHint.innerText = isJoin
-    ? 'Use o nome e a senha que seu amigo passou. As salas que você já usou ficam salvas em "Minhas salas".'
+    ? 'Use o nome e a senha. As salas que você já usou ficam salvas em "Minhas salas".'
     : 'Escolha um nome e um PIN. Depois é só voltar por "Minhas salas", sem criar de novo.';
 }
 
@@ -429,11 +429,11 @@ btnCreateRoom.addEventListener('click', () => {
   const room = normalizeRoomName(createRoomName.value);
   const pin = createRoomPin.value.trim();
   if (!room) return showFormError('create', 'Digite um nome válido (letras, números, - ou _).', createRoomName);
-  if (!pin) return showFormError('create', 'Defina uma senha/PIN para a sala.', createRoomPin);
+  if (!pin) return showFormError('create', 'Defina uma senha para a sala.', createRoomPin);
 
   const existing = getRoomsDatabase()[room];
   if (existing && existing.owner !== currentUser.username) {
-    return showFormError('create', 'Já existe uma sala com esse nome. Escolha outro nome ou use "Entrar".', createRoomName);
+    return showFormError('create', 'Já existe uma sala com esse nome. Escolha outro nome.', createRoomName);
   }
 
   // Se a sala já é sua, "criar" só atualiza o PIN e entra: não precisa recriar sempre
@@ -628,7 +628,7 @@ function maybeResolveJoin(session) {
   const waiting = Array.from(peers.values()).some(e => !e.verified); // alguém ainda confirmando a senha
   if (waiting) return;
   if (joinTrusted) enterRoomUI(session);
-  else failJoin('Ninguém está nessa sala agora, então não dá para conferir a senha. Peça para o dono entrar primeiro ou crie a sala em "Criar sala".');
+  else failJoin('Ninguém está nessa sala agora. Peça para o dono entrar primeiro ou crie uma sala em "Criar sala".');
 }
 
 function scheduleReconnect(session, delay = 3000) {
@@ -1314,7 +1314,7 @@ function setJoinBusy(busy) {
   btnJoinRoom.disabled = busy;
   btnCreateRoom.disabled = busy;
   btnJoinRoom.innerText = (busy && joinOrigin === 'join') ? '⏳ Verificando...' : '🔌 Entrar na sala';
-  btnCreateRoom.innerText = (busy && joinOrigin === 'create') ? '⏳ Verificando...' : '🚀 Criar e entrar';
+  btnCreateRoom.innerText = (busy && joinOrigin === 'create') ? '⏳ Verificando...' : ' Criar e entrar';
   myRoomsList.classList.toggle('busy', busy);
 }
 
@@ -1347,7 +1347,7 @@ function joinRoom(roomName, pin, origin = 'join', exclusiveFlag = false) {
     if (session === roomSession && !roomEntered) {
       failJoin(joinSawFull
         ? 'A sala está cheia no momento. Tente de novo em instantes.'
-        : 'Não foi possível conectar à sala. Confira o nome e sua internet e tente de novo.');
+        : 'Não foi possível conectar à sala. Confira o nome e tente de novo.');
     }
   }, JOIN_VERIFY_TIMEOUT_MS);
 
@@ -1395,7 +1395,7 @@ function isOlderThanMe(theirAge) {
 function wrongPinMessage() {
   if (joinOrigin === 'list') return 'A senha dessa sala mudou ou está incorreta. Digite a senha atual.';
   if (joinOrigin === 'create') return 'Já existe uma sala ativa com esse nome e outra senha. Escolha outro nome.';
-  return '❌ Senha incorreta. Confira com quem criou a sala.';
+  return '❌ Senha incorreta.';
 }
 
 const VERSION_MESSAGE = 'Esta sala usa outra versão do app. Atualize o app (ou recarregue a página do site) e tente de novo.';
